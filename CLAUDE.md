@@ -102,3 +102,83 @@ The project is configured for deployment on:
 - Gas optimization is critical for user experience
 - Mathematical precision is essential for protocol security
 - Follow the existing code style and patterns strictly
+
+## Referrer Fee Implementation Plans
+
+### Implementation Documentation
+This repository contains comprehensive implementation plans for adding referrer fee functionality to the Uniswap V3 protocol:
+
+- **`referrer-fee-implementation-plan.md`** - Complete plan for adding referrer fees to UniswapV3Pool contract
+- **`factory-referrer-fee-implementation-plan.md`** - Plan for factory-level referrer fee management
+- **`factory-router-whitelist-implementation-plan.md`** - Plan for router whitelist in factory
+- **`swaprouter-referrer-implementation-plan.md`** - Plan for SwapRouter referrer integration
+
+### Referrer Fee System Architecture
+The planned referrer fee system consists of four main components:
+
+#### 1. Pool-Level Referrer Fees (`UniswapV3Pool.sol`)
+- **Fee Structure**: Similar to protocol fees with separate rates for token0 and token1
+- **Storage**: `feeReferrer` in Slot0 struct (packed with other fee data)
+- **Direct Transfer**: Referrer fees sent directly to referrer during swap (gas efficient)
+- **Swap Integration**: Modified `swap()` function accepts referrer parameter from router
+- **Access Control**: Only factory owner can set referrer fee rates via `setFeeReferrer()`
+
+#### 2. Factory-Level Fee Management (`UniswapV3Factory.sol`)
+- **Default Configuration**: `defaultReferrerFee` for newly created pools
+- **Per-Pool Configuration**: `poolReferrerFees` mapping for individual pool settings
+- **Management Functions**: `setDefaultReferrerFee()`, `setPoolReferrerFee()`, batch operations
+- **Pool Integration**: Automatically configures new pools with default referrer fees
+- **Access Control**: Only factory owner can modify referrer fee configurations
+
+#### 3. Router Whitelist System (`UniswapV3Factory.sol`)
+- **Whitelist Storage**: `whitelistedRouters` mapping for approved routers
+- **Enumeration Support**: `whitelistedRoutersList` array for governance queries
+- **Management Functions**: Add/remove routers individually or in batches
+- **Pool Validation**: Pools verify router whitelist before processing referrer fees
+- **Emergency Controls**: Quick removal and pause functionality for security
+
+#### 4. SwapRouter Integration (`SwapRouter.sol` - Periphery)
+- **Global Referrer**: Single referrer address for all swaps through the router
+- **Owner Management**: Uses OpenZeppelin Ownable for standardized ownership
+- **Referrer Configuration**: `setReferrer()` function for owner-only updates
+- **Swap Integration**: All swap functions pass referrer to pool contracts
+- **Access Control**: Only router owner can change referrer address
+
+### Key Design Decisions
+
+#### Fee Calculation Hierarchy
+1. **Protocol Fee**: Extracted first from swap fees
+2. **Referrer Fee**: Extracted from remaining fees after protocol fee
+3. **LP Fee**: Remainder distributed to liquidity providers
+
+#### Security Model
+- **Factory Owner**: Controls referrer fee rates and router whitelist
+- **Router Owner**: Controls referrer address for their router
+- **Pool Validation**: Only whitelisted routers can claim referrer fees
+- **Direct Transfer**: Immediate fee settlement for gas efficiency
+
+#### Gas Optimization
+- **Direct Transfer**: ~2,000 gas savings vs accumulate-then-collect pattern
+- **Packed Storage**: Referrer fees packed in existing Slot0 structure
+- **Efficient Validation**: O(1) router whitelist lookups
+- **Minimal Overhead**: ~3% gas increase for swaps with referrer
+
+### Implementation Status
+- **Planning Phase**: Comprehensive implementation plans completed
+- **Ready for Development**: All architectural decisions documented
+- **Security Reviewed**: Access controls and validation patterns defined
+- **Testing Strategy**: Unit and integration test plans included
+
+### Security Considerations
+- **Access Control**: Multi-layer security with factory owner, router owner, and pool validation
+- **Router Whitelisting**: Prevents malicious routers from claiming referrer fees
+- **Emergency Procedures**: Quick response mechanisms for security incidents
+- **Audit Requirements**: All changes require security review before deployment
+
+### Development Guidelines for Referrer Fees
+- Follow existing protocol fee patterns for consistency
+- Use OpenZeppelin contracts for standard functionality (Ownable)
+- Implement comprehensive test coverage for all fee scenarios
+- Maintain gas efficiency - referrer fees should not significantly impact swap costs
+- Ensure proper event emission for monitoring and analytics
+- Consider upgrade paths and backwards compatibility
