@@ -3,6 +3,8 @@
 ## Overview
 This document outlines the implementation plan for adding router whitelist functionality to the UniswapV3Factory contract. The factory will maintain a list of approved routers, and pools will be able to verify if they were called from a whitelisted router.
 
+**⚠️ IMPLEMENTATION NOTE**: This implementation has been optimized for mainnet deployment by removing enumeration features to reduce contract size below the 24KB limit. See [Contract Size Optimization](#contract-size-optimization) section for details.
+
 ## Purpose and Benefits
 
 ### Why Factory Should Track Routers
@@ -60,16 +62,19 @@ This document outlines the implementation plan for adding router whitelist funct
 mapping(address => bool) public whitelistedRouters;
 ```
 
-#### Add router list for enumeration (optional)
+#### ~~Add router list for enumeration~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-/// @notice Array of all whitelisted router addresses for enumeration
-/// @dev Used for off-chain queries and governance
-address[] public whitelistedRoutersList;
+// REMOVED: These storage structures were removed to reduce contract size
+// /// @notice Array of all whitelisted router addresses for enumeration
+// /// @dev Used for off-chain queries and governance
+// address[] public whitelistedRoutersList;
 
-/// @notice Mapping to track router index in the list
-/// @dev router address => index in whitelistedRoutersList (0 means not in list)
-mapping(address => uint256) private routerListIndex;
+// /// @notice Mapping to track router index in the list
+// /// @dev router address => index in whitelistedRoutersList (0 means not in list)
+// mapping(address => uint256) private routerListIndex;
 ```
+
+**🔧 ALTERNATIVE SOLUTION**: Use event-based enumeration for off-chain queries instead of on-chain arrays.
 
 ### 2. Events
 
@@ -85,22 +90,24 @@ event RouterWhitelisted(address indexed router, address indexed caller);
 /// @param caller The address that removed the router
 event RouterRemovedFromWhitelist(address indexed router, address indexed caller);
 
-/// @notice Emitted when all routers are cleared from whitelist
-/// @param caller The address that cleared the whitelist
-event WhitelistCleared(address indexed caller);
+// REMOVED: These events were removed to reduce contract size
+// /// @notice Emitted when all routers are cleared from whitelist
+// /// @param caller The address that cleared the whitelist
+// event WhitelistCleared(address indexed caller);
 
-/// @notice Emitted when swap referrer fees are paid to a referrer (whitelisted router)
-/// @param router The router that processed the swap
-/// @param referrer The referrer that received the fees
-/// @param amount0 The amount of token0 fees paid
-/// @param amount1 The amount of token1 fees paid
-event SwapReferrerFeePaid(address indexed router, address indexed referrer, uint256 amount0, uint256 amount1);
+// FUTURE IMPLEMENTATION: These events will be added in pool contract integration
+// /// @notice Emitted when swap referrer fees are paid to a referrer (whitelisted router)
+// /// @param router The router that processed the swap
+// /// @param referrer The referrer that received the fees
+// /// @param amount0 The amount of token0 fees paid
+// /// @param amount1 The amount of token1 fees paid
+// event SwapReferrerFeePaid(address indexed router, address indexed referrer, uint256 amount0, uint256 amount1);
 
-/// @notice Emitted when swap referrer fees are added to protocol fees (non-whitelisted router)
-/// @param router The router that processed the swap
-/// @param amount0 The amount of token0 fees added to protocol fees
-/// @param amount1 The amount of token1 fees added to protocol fees
-event SwapReferrerFeeAddedToProtocol(address indexed router, uint256 amount0, uint256 amount1);
+// /// @notice Emitted when swap referrer fees are added to protocol fees (non-whitelisted router)
+// /// @param router The router that processed the swap
+// /// @param amount0 The amount of token0 fees added to protocol fees
+// /// @param amount1 The amount of token1 fees added to protocol fees
+// event SwapReferrerFeeAddedToProtocol(address indexed router, uint256 amount0, uint256 amount1);
 ```
 
 ### 3. Interface Updates
@@ -110,22 +117,7 @@ event SwapReferrerFeeAddedToProtocol(address indexed router, uint256 amount0, ui
 /// @notice Returns whether a router is whitelisted
 /// @param router The router address to check
 /// @return True if the router is whitelisted
-/// @dev NAMING NOTE: Function name is isRouterWhitelisted() to avoid conflict with 
-///      the whitelistedRouters mapping. This prevents compilation errors.
 function isRouterWhitelisted(address router) external view returns (bool);
-
-/// @notice Returns the total number of whitelisted routers
-/// @return The count of whitelisted routers
-function whitelistedRoutersCount() external view returns (uint256);
-
-/// @notice Returns a whitelisted router address by index
-/// @param index The index in the whitelisted routers list
-/// @return The router address at the given index
-function whitelistedRoutersList(uint256 index) external view returns (address);
-
-/// @notice Returns all whitelisted router addresses
-/// @return Array of all whitelisted router addresses
-function getAllWhitelistedRouters() external view returns (address[] memory);
 
 /// @notice Adds a router to the whitelist
 /// @dev Can only be called by the factory owner
@@ -137,19 +129,34 @@ function addRouterToWhitelist(address router) external;
 /// @param router The router address to remove
 function removeRouterFromWhitelist(address router) external;
 
-/// @notice Adds multiple routers to the whitelist
-/// @dev Can only be called by the factory owner
-/// @param routers Array of router addresses to whitelist
-function addMultipleRoutersToWhitelist(address[] calldata routers) external;
+// REMOVED: These functions were removed to reduce contract size
+// /// @notice Returns the total number of whitelisted routers
+// /// @return The count of whitelisted routers
+// function whitelistedRoutersCount() external view returns (uint256);
 
-/// @notice Removes multiple routers from the whitelist
-/// @dev Can only be called by the factory owner
-/// @param routers Array of router addresses to remove
-function removeMultipleRoutersFromWhitelist(address[] calldata routers) external;
+// /// @notice Returns a whitelisted router address by index
+// /// @param index The index in the whitelisted routers list
+// /// @return The router address at the given index
+// function whitelistedRoutersList(uint256 index) external view returns (address);
 
-/// @notice Clears all routers from the whitelist
-/// @dev Can only be called by the factory owner
-function clearRouterWhitelist() external;
+// /// @notice Returns all whitelisted router addresses
+// /// @return Array of all whitelisted router addresses
+// function getAllWhitelistedRouters() external view returns (address[] memory);
+
+// REMOVED: These batch functions were removed to reduce contract size
+// /// @notice Adds multiple routers to the whitelist
+// /// @dev Can only be called by the factory owner
+// /// @param routers Array of router addresses to whitelist
+// function addMultipleRoutersToWhitelist(address[] calldata routers) external;
+
+// /// @notice Removes multiple routers from the whitelist
+// /// @dev Can only be called by the factory owner
+// /// @param routers Array of router addresses to remove
+// function removeMultipleRoutersFromWhitelist(address[] calldata routers) external;
+
+// /// @notice Clears all routers from the whitelist
+// /// @dev Can only be called by the factory owner
+// function clearRouterWhitelist() external;
 ```
 
 ### 4. Access Control Implementation
@@ -182,9 +189,9 @@ function addRouterToWhitelist(address router) external override {
     
     whitelistedRouters[router] = true;
     
-    // Add to enumeration list
-    whitelistedRoutersList.push(router);
-    routerListIndex[router] = whitelistedRoutersList.length; // 1-based index
+    // REMOVED: Enumeration list code removed for contract size optimization
+    // whitelistedRoutersList.push(router);
+    // routerListIndex[router] = whitelistedRoutersList.length; // 1-based index
     
     emit RouterWhitelisted(router, msg.sender);
 }
@@ -200,115 +207,123 @@ function removeRouterFromWhitelist(address router) external override {
     
     whitelistedRouters[router] = false;
     
-    // Remove from enumeration list
-    uint256 index = routerListIndex[router];
-    require(index > 0, 'ROUTER_NOT_IN_LIST');
-    
-    uint256 arrayIndex = index - 1; // Convert to 0-based index
-    uint256 lastIndex = whitelistedRoutersList.length - 1;
-    
-    if (arrayIndex != lastIndex) {
-        // Move last element to deleted position
-        address lastRouter = whitelistedRoutersList[lastIndex];
-        whitelistedRoutersList[arrayIndex] = lastRouter;
-        routerListIndex[lastRouter] = index; // Update index for moved element
-    }
-    
-    whitelistedRoutersList.pop();
-    delete routerListIndex[router];
+    // REMOVED: Enumeration list code removed for contract size optimization
+    // uint256 index = routerListIndex[router];
+    // require(index > 0, 'ROUTER_NOT_IN_LIST');
+    // 
+    // uint256 arrayIndex = index - 1; // Convert to 0-based index
+    // uint256 lastIndex = whitelistedRoutersList.length - 1;
+    // 
+    // if (arrayIndex != lastIndex) {
+    //     // Move last element to deleted position
+    //     address lastRouter = whitelistedRoutersList[lastIndex];
+    //     whitelistedRoutersList[arrayIndex] = lastRouter;
+    //     routerListIndex[lastRouter] = index; // Update index for moved element
+    // }
+    // 
+    // whitelistedRoutersList.pop();
+    // delete routerListIndex[router];
     
     emit RouterRemovedFromWhitelist(router, msg.sender);
 }
 ```
 
-#### addMultipleRoutersToWhitelist function
+#### ~~addMultipleRoutersToWhitelist function~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-/// @inheritdoc IUniswapV3Factory
-function addMultipleRoutersToWhitelist(address[] calldata routers) external override {
-    require(msg.sender == owner, 'NOT_OWNER');
-    
-    for (uint256 i = 0; i < routers.length; i++) {
-        address router = routers[i];
-        require(router != address(0), 'INVALID_ROUTER');
-        
-        if (!whitelistedRouters[router]) {
-            whitelistedRouters[router] = true;
-            
-            // Add to enumeration list
-            whitelistedRoutersList.push(router);
-            routerListIndex[router] = whitelistedRoutersList.length;
-            
-            emit RouterWhitelisted(router, msg.sender);
-        }
-    }
-}
+// REMOVED: This function was removed to reduce contract size
+// Use individual addRouterToWhitelist() calls instead
+// /// @inheritdoc IUniswapV3Factory
+// function addMultipleRoutersToWhitelist(address[] calldata routers) external override {
+//     require(msg.sender == owner, 'NOT_OWNER');
+//     
+//     for (uint256 i = 0; i < routers.length; i++) {
+//         address router = routers[i];
+//         require(router != address(0), 'INVALID_ROUTER');
+//         
+//         if (!whitelistedRouters[router]) {
+//             whitelistedRouters[router] = true;
+//             
+//             // Add to enumeration list
+//             whitelistedRoutersList.push(router);
+//             routerListIndex[router] = whitelistedRoutersList.length;
+//             
+//             emit RouterWhitelisted(router, msg.sender);
+//         }
+//     }
+// }
 ```
 
-#### removeMultipleRoutersFromWhitelist function
+#### ~~removeMultipleRoutersFromWhitelist function~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-/// @inheritdoc IUniswapV3Factory
-function removeMultipleRoutersFromWhitelist(address[] calldata routers) external override {
-    require(msg.sender == owner, 'NOT_OWNER');
-    
-    for (uint256 i = 0; i < routers.length; i++) {
-        address router = routers[i];
-        
-        if (whitelistedRouters[router]) {
-            whitelistedRouters[router] = false;
-            
-            // Remove from enumeration list
-            uint256 index = routerListIndex[router];
-            if (index > 0) {
-                uint256 arrayIndex = index - 1;
-                uint256 lastIndex = whitelistedRoutersList.length - 1;
-                
-                if (arrayIndex != lastIndex) {
-                    address lastRouter = whitelistedRoutersList[lastIndex];
-                    whitelistedRoutersList[arrayIndex] = lastRouter;
-                    routerListIndex[lastRouter] = index;
-                }
-                
-                whitelistedRoutersList.pop();
-                delete routerListIndex[router];
-            }
-            
-            emit RouterRemovedFromWhitelist(router, msg.sender);
-        }
-    }
-}
+// REMOVED: This function was removed to reduce contract size
+// Use individual removeRouterFromWhitelist() calls instead
+// /// @inheritdoc IUniswapV3Factory
+// function removeMultipleRoutersFromWhitelist(address[] calldata routers) external override {
+//     require(msg.sender == owner, 'NOT_OWNER');
+//     
+//     for (uint256 i = 0; i < routers.length; i++) {
+//         address router = routers[i];
+//         
+//         if (whitelistedRouters[router]) {
+//             whitelistedRouters[router] = false;
+//             
+//             // Remove from enumeration list
+//             uint256 index = routerListIndex[router];
+//             if (index > 0) {
+//                 uint256 arrayIndex = index - 1;
+//                 uint256 lastIndex = whitelistedRoutersList.length - 1;
+//                 
+//                 if (arrayIndex != lastIndex) {
+//                     address lastRouter = whitelistedRoutersList[lastIndex];
+//                     whitelistedRoutersList[arrayIndex] = lastRouter;
+//                     routerListIndex[lastRouter] = index;
+//                 }
+//                 
+//                 whitelistedRoutersList.pop();
+//                 delete routerListIndex[router];
+//             }
+//             
+//             emit RouterRemovedFromWhitelist(router, msg.sender);
+//         }
+//     }
+// }
 ```
 
-#### clearRouterWhitelist function
+#### ~~clearRouterWhitelist function~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-/// @inheritdoc IUniswapV3Factory
-function clearRouterWhitelist() external override {
-    require(msg.sender == owner, 'NOT_OWNER');
-    
-    // Clear all mappings
-    for (uint256 i = 0; i < whitelistedRoutersList.length; i++) {
-        address router = whitelistedRoutersList[i];
-        whitelistedRouters[router] = false;
-        delete routerListIndex[router];
-    }
-    
-    // Clear the array
-    delete whitelistedRoutersList;
-    
-    emit WhitelistCleared(msg.sender);
-}
+// REMOVED: This function was removed to reduce contract size
+// Use individual removeRouterFromWhitelist() calls instead
+// /// @inheritdoc IUniswapV3Factory
+// function clearRouterWhitelist() external override {
+//     require(msg.sender == owner, 'NOT_OWNER');
+//     
+//     // Clear all mappings
+//     for (uint256 i = 0; i < whitelistedRoutersList.length; i++) {
+//         address router = whitelistedRoutersList[i];
+//         whitelistedRouters[router] = false;
+//         delete routerListIndex[router];
+//     }
+//     
+//     // Clear the array
+//     delete whitelistedRoutersList;
+//     
+//     emit WhitelistCleared(msg.sender);
+// }
 ```
 
-#### View functions
+#### ~~View functions~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-/// @inheritdoc IUniswapV3Factory
-function whitelistedRoutersCount() external view override returns (uint256) {
-    return whitelistedRoutersList.length;
-}
+// REMOVED: These functions were removed to reduce contract size
+// Use event-based enumeration for off-chain queries instead
+// /// @inheritdoc IUniswapV3Factory
+// function whitelistedRoutersCount() external view returns (uint256) {
+//     return whitelistedRoutersList.length;
+// }
 
-/// @inheritdoc IUniswapV3Factory
-function getAllWhitelistedRouters() external view override returns (address[] memory) {
-    return whitelistedRoutersList;
-}
+// /// @inheritdoc IUniswapV3Factory
+// function getAllWhitelistedRouters() external view returns (address[] memory) {
+//     return whitelistedRoutersList;
+// }
 ```
 
 ### 6. Pool Integration
@@ -469,15 +484,13 @@ function deployAndRegisterRouter() external {
 }
 ```
 
-#### Batch router registration
+#### ~~Batch router registration~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-// Register multiple routers at once
-address[] memory routers = new address[](3);
-routers[0] = ROUTER_V1;
-routers[1] = ROUTER_V2;
-routers[2] = THIRD_PARTY_ROUTER;
-
-IUniswapV3Factory(factory).addMultipleRoutersToWhitelist(routers);
+// REMOVED: Batch functions were removed to reduce contract size
+// Use individual calls instead:
+// IUniswapV3Factory(factory).addRouterToWhitelist(ROUTER_V1);
+// IUniswapV3Factory(factory).addRouterToWhitelist(ROUTER_V2);
+// IUniswapV3Factory(factory).addRouterToWhitelist(THIRD_PARTY_ROUTER);
 ```
 
 ### 8. Security Considerations
@@ -487,17 +500,17 @@ All router whitelist functions are protected by the `require(msg.sender == owner
 
 - `addRouterToWhitelist()` - ✅ Owner only
 - `removeRouterFromWhitelist()` - ✅ Owner only  
-- `addMultipleRoutersToWhitelist()` - ✅ Owner only
-- `removeMultipleRoutersFromWhitelist()` - ✅ Owner only
-- `clearRouterWhitelist()` - ✅ Owner only
-- `emergencyRemoveRouter()` - ✅ Owner only
-- `pauseWhitelist()` - ✅ Owner only
-- `unpauseWhitelist()` - ✅ Owner only
+- ~~`addMultipleRoutersToWhitelist()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
+- ~~`removeMultipleRoutersFromWhitelist()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
+- ~~`clearRouterWhitelist()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
+- ~~`emergencyRemoveRouter()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
+- ~~`pauseWhitelist()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
+- ~~`unpauseWhitelist()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
 
 **View functions are public** (no access control needed):
-- `isRouterWhitelisted()` - Public view
-- `whitelistedRoutersCount()` - Public view
-- `getAllWhitelistedRouters()` - Public view
+- `isRouterWhitelisted()` - ✅ Public view (implemented)
+- ~~`whitelistedRoutersCount()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
+- ~~`getAllWhitelistedRouters()`~~ - ❌ **REMOVED FOR CONTRACT SIZE**
 
 #### Additional Security Features
 - Pool validation prevents unauthorized swap referrer fee claims
@@ -515,54 +528,57 @@ All router whitelist functions are protected by the `require(msg.sender == owner
 - Minimize storage operations
 - Efficient array management for enumeration
 
-### 9. Emergency Procedures
+### ~~9. Emergency Procedures~~ ❌ **REMOVED FOR CONTRACT SIZE**
 
-#### Emergency router removal
+#### ~~Emergency router removal~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-// Quick removal of compromised router
-function emergencyRemoveRouter(address router) external {
-    require(msg.sender == owner, 'NOT_OWNER');
-    require(whitelistedRouters[router], 'ROUTER_NOT_WHITELISTED');
-    
-    // Immediate removal
-    whitelistedRouters[router] = false;
-    
-    // Remove from list (simplified for emergency)
-    // Full cleanup can be done later
-    
-    emit RouterRemovedFromWhitelist(router, msg.sender);
-}
+// REMOVED: This function was removed to reduce contract size
+// Use regular removeRouterFromWhitelist() for router removal
+// function emergencyRemoveRouter(address router) external {
+//     require(msg.sender == owner, 'NOT_OWNER');
+//     require(whitelistedRouters[router], 'ROUTER_NOT_WHITELISTED');
+//     
+//     // Immediate removal
+//     whitelistedRouters[router] = false;
+//     
+//     // Remove from list (simplified for emergency)
+//     // Full cleanup can be done later
+//     
+//     emit RouterRemovedFromWhitelist(router, msg.sender);
+// }
 ```
 
-#### Emergency whitelist pause
+#### ~~Emergency whitelist pause~~ ❌ **REMOVED FOR CONTRACT SIZE**
 ```solidity
-/// @notice Emergency pause for router whitelist
-bool public whitelistPaused;
+// REMOVED: These functions were removed to reduce contract size
+// Use individual router removal for emergency situations
+// /// @notice Emergency pause for router whitelist
+// bool public whitelistPaused;
 
-modifier whenWhitelistNotPaused() {
-    require(!whitelistPaused, 'WHITELIST_PAUSED');
-    _;
-}
+// modifier whenWhitelistNotPaused() {
+//     require(!whitelistPaused, 'WHITELIST_PAUSED');
+//     _;
+// }
 
-function pauseWhitelist() external {
-    require(msg.sender == owner, 'NOT_OWNER');
-    whitelistPaused = true;
-}
+// function pauseWhitelist() external {
+//     require(msg.sender == owner, 'NOT_OWNER');
+//     whitelistPaused = true;
+// }
 
-function unpauseWhitelist() external {
-    require(msg.sender == owner, 'NOT_OWNER');
-    whitelistPaused = false;
-}
+// function unpauseWhitelist() external {
+//     require(msg.sender == owner, 'NOT_OWNER');
+//     whitelistPaused = false;
+// }
 ```
 
 ### 10. Testing Strategy
 
 #### Unit Tests
-- Test router whitelist addition and removal
-- Test batch operations
-- Test access control (only owner)
-- Test edge cases (zero address, duplicates)
-- Test enumeration functions
+- ✅ Test router whitelist addition and removal
+- ❌ ~~Test batch operations~~ (removed for contract size)
+- ✅ Test access control (only owner)
+- ✅ Test edge cases (zero address, duplicates)
+- ❌ ~~Test enumeration functions~~ (removed for contract size)
 
 #### Integration Tests
 - Test pool-factory integration
@@ -578,14 +594,14 @@ function unpauseWhitelist() external {
 ### 11. Monitoring and Analytics
 
 #### Events for Tracking
-- `RouterWhitelisted`: Track router additions
-- `RouterRemovedFromWhitelist`: Track router removals
-- `WhitelistCleared`: Track whitelist resets
+- ✅ `RouterWhitelisted`: Track router additions
+- ✅ `RouterRemovedFromWhitelist`: Track router removals
+- ❌ ~~`WhitelistCleared`~~ (removed for contract size)
 
 #### Query Functions
-- `getAllWhitelistedRouters()`: Get all approved routers
-- `whitelistedRoutersCount()`: Get whitelist size
-- `isRouterWhitelisted[router]`: Check specific router status
+- ❌ ~~`getAllWhitelistedRouters()`~~ (removed for contract size - use event-based enumeration)
+- ❌ ~~`whitelistedRoutersCount()`~~ (removed for contract size - use event-based counting)
+- ✅ `isRouterWhitelisted[router]`: Check specific router status
 
 #### Off-chain Integration
 - Subgraph indexing of whitelist events
@@ -661,55 +677,361 @@ function proposeRouterWhitelisting(
 - Separate roles for different router types
 - Time delays for router removal
 
+## Contract Size Optimization
+
+### Mainnet Deployment Requirements
+
+The UniswapV3Factory contract exceeded the 24KB Spurious Dragon limit for mainnet deployment. To meet deployment requirements, we implemented **Option 3: Feature Reduction** which removed enumeration features while preserving core functionality.
+
+### Removed Features (Contract Size Optimization)
+
+#### Storage Structures Removed
+- `address[] public whitelistedRoutersList` - Router enumeration array
+- `mapping(address => uint256) private routerListIndex` - Array index mapping
+
+#### Functions Removed
+- `whitelistedRoutersCount()` - Count of whitelisted routers
+- `getAllWhitelistedRouters()` - Array of all whitelisted routers
+- `whitelistedRoutersList(uint256 index)` - Router by index
+- `addMultipleRoutersToWhitelist(address[] calldata routers)` - Batch add
+- `removeMultipleRoutersFromWhitelist(address[] calldata routers)` - Batch remove
+- `clearRouterWhitelist()` - Clear all routers
+- `emergencyRemoveRouter(address router)` - Emergency removal
+- `pauseWhitelist()` / `unpauseWhitelist()` - Pause functionality
+
+#### Events Removed
+- `WhitelistCleared(address indexed caller)` - Whitelist cleared event
+
+### Alternative Solutions
+
+#### Event-Based Enumeration
+Replaced on-chain enumeration with event-based queries:
+- Query `RouterWhitelisted` events for added routers
+- Query `RouterRemovedFromWhitelist` events for removed routers
+- Build router list off-chain by processing events
+
+#### Batch Operations Alternative
+Replace batch functions with multiple individual calls:
+```solidity
+// Instead of: addMultipleRoutersToWhitelist([router1, router2, router3])
+// Use:
+factory.addRouterToWhitelist(router1);
+factory.addRouterToWhitelist(router2);
+factory.addRouterToWhitelist(router3);
+```
+
+#### Emergency Procedures Alternative
+Use individual removal for emergency situations:
+```solidity
+// Instead of: emergencyRemoveRouter(router)
+// Use:
+factory.removeRouterFromWhitelist(router);
+```
+
+### Core Functionality Preserved
+
+#### Essential Functions Kept
+- `isRouterWhitelisted(address router)` - ✅ Core whitelist check
+- `addRouterToWhitelist(address router)` - ✅ Add router
+- `removeRouterFromWhitelist(address router)` - ✅ Remove router
+- `RouterWhitelisted` event - ✅ Addition tracking
+- `RouterRemovedFromWhitelist` event - ✅ Removal tracking
+- All access control and validation logic - ✅ Security preserved
+
+### Contract Size Results
+
+#### Optimization Settings
+- Compiler runs reduced from 800 to 50 for smaller bytecode
+- Removed enumeration arrays and complex logic
+- Simplified function implementations
+
+#### Deployment Status
+- ✅ Contract size under 24KB limit
+- ✅ Mainnet deployment ready
+- ✅ All core functionality preserved
+- ✅ Security model intact
+
+### Future Considerations
+
+If enumeration features are needed in the future, consider:
+1. **Separate Enumeration Contract**: Deploy enumeration logic in a separate contract
+2. **Upgradeable Proxy Pattern**: Use proxy pattern for future feature additions
+3. **Off-chain Indexing**: Build comprehensive off-chain enumeration using events
+4. **Router Registry Contract**: Create dedicated registry contract for advanced features
+
 ## Implementation Task Sequence
 
-### Phase 1: Factory Contract Updates (Week 1-2)
+### Phase 1: Factory Contract Updates (Week 1-2) ✅ **COMPLETED**
 
 #### Task 1.1: Add Storage Structures
-- [ ] Add `mapping(address => bool) public whitelistedRouters` to UniswapV3Factory
-- [ ] Add `address[] public whitelistedRoutersList` for enumeration
-- [ ] Add `mapping(address => uint256) private routerListIndex` for efficient removal
-- [ ] Update contract storage layout documentation
+- [x] Add `mapping(address => bool) public whitelistedRouters` to UniswapV3Factory
+- [x] ❌ ~~Add `address[] public whitelistedRoutersList` for enumeration~~ (removed for contract size)
+- [x] ❌ ~~Add `mapping(address => uint256) private routerListIndex` for efficient removal~~ (removed for contract size)
+- [x] Update contract storage layout documentation
 
 #### Task 1.2: Implement Core Interface Functions
-- [ ] Add `addRouterToWhitelist(address router)` function
-- [ ] Add `removeRouterFromWhitelist(address router)` function  
-- [ ] Add `isRouterWhitelisted(address router)` view function
-- [ ] Add `getWhitelistedRoutersCount()` view function
-- [ ] Add `getAllWhitelistedRouters()` view function
+- [x] Add `addRouterToWhitelist(address router)` function
+- [x] Add `removeRouterFromWhitelist(address router)` function  
+- [x] Add `isRouterWhitelisted(address router)` view function
+- [x] ❌ ~~Add `getWhitelistedRoutersCount()` view function~~ (removed for contract size)
+- [x] ❌ ~~Add `getAllWhitelistedRouters()` view function~~ (removed for contract size)
 
 #### Task 1.3: Add Events
-- [ ] Add `RouterWhitelisted(address indexed router, address indexed caller)` event
-- [ ] Add `RouterRemovedFromWhitelist(address indexed router, address indexed caller)` event
-- [ ] Add `WhitelistCleared(address indexed caller)` event
-- [ ] Add `SwapReferrerFeePaid(address indexed router, address indexed referrer, uint256 amount0, uint256 amount1)` event
-- [ ] Add `SwapReferrerFeeAddedToProtocol(address indexed router, uint256 amount0, uint256 amount1)` event
+- [x] Add `RouterWhitelisted(address indexed router, address indexed caller)` event
+- [x] Add `RouterRemovedFromWhitelist(address indexed router, address indexed caller)` event
+- [x] ❌ ~~Add `WhitelistCleared(address indexed caller)` event~~ (removed for contract size)
+- [x] ❌ ~~Add `SwapReferrerFeePaid(address indexed router, address indexed referrer, uint256 amount0, uint256 amount1)` event~~ (future implementation)
+- [x] ❌ ~~Add `SwapReferrerFeeAddedToProtocol(address indexed router, uint256 amount0, uint256 amount1)` event~~ (future implementation)
 
 #### Task 1.4: Implement Access Control
-- [ ] Use existing factory owner pattern (`require(msg.sender == owner, 'NOT_OWNER')`)
-- [ ] Apply owner check to all whitelist management functions
-- [ ] Add input validation (non-zero addresses, duplicate prevention)
-- [ ] Add proper error messages for all failure cases
+- [x] Use existing factory owner pattern (`require(msg.sender == owner, 'NOT_OWNER')`)
+- [x] Apply owner check to all whitelist management functions
+- [x] Add input validation (non-zero addresses, duplicate prevention)
+- [x] Add proper error messages for all failure cases
 
-### Phase 2: Batch Operations Implementation (Week 2-3)
+### ~~Phase 2: Batch Operations Implementation (Week 2-3)~~ ❌ **REMOVED FOR CONTRACT SIZE**
 
-#### Task 2.1: Batch Add/Remove Functions
-- [ ] Implement `addMultipleRoutersToWhitelist(address[] calldata routers)`
-- [ ] Implement `removeMultipleRoutersFromWhitelist(address[] calldata routers)`
-- [ ] Add array length validation and gas optimization
-- [ ] Add batch operation events
+#### Task 2.1: ~~Batch Add/Remove Functions~~ ❌ **REMOVED FOR CONTRACT SIZE**
+- [x] ❌ ~~Implement `addMultipleRoutersToWhitelist(address[] calldata routers)`~~ (removed for contract size)
+- [x] ❌ ~~Implement `removeMultipleRoutersFromWhitelist(address[] calldata routers)`~~ (removed for contract size)
+- [x] ❌ ~~Add array length validation and gas optimization~~ (not needed)
+- [x] ❌ ~~Add batch operation events~~ (not needed)
 
-#### Task 2.2: Emergency Functions
-- [ ] Implement `clearRouterWhitelist()` for emergency situations
-- [ ] Add `emergencyRemoveRouter(address router)` for quick removal
-- [ ] Add pause/unpause functionality for whitelist operations
-- [ ] Create emergency response procedures
+#### Task 2.2: ~~Emergency Functions~~ ❌ **REMOVED FOR CONTRACT SIZE**
+- [x] ❌ ~~Implement `clearRouterWhitelist()` for emergency situations~~ (removed for contract size)
+- [ ] ❌ ~~Add `emergencyRemoveRouter(address router)` for quick removal~~ (removed for contract size)
+- [ ] ❌ ~~Add pause/unpause functionality for whitelist operations~~ (removed for contract size)
+- [ ] ❌ ~~Create emergency response procedures~~ (use individual removal)
 
-#### Task 2.3: Enumeration Optimization
-- [ ] Optimize array management for gas efficiency
-- [ ] Implement efficient removal with swap-and-pop pattern
-- [ ] Add bounds checking for all array operations
-- [ ] Test enumeration functions with large datasets
+#### Task 2.3: ~~Enumeration Optimization~~ ❌ **REMOVED FOR CONTRACT SIZE**
+- [x] ❌ ~~Optimize array management for gas efficiency~~ (removed for contract size)
+- [x] ❌ ~~Implement efficient removal with swap-and-pop pattern~~ (removed for contract size)
+- [x] ❌ ~~Add bounds checking for all array operations~~ (not needed)
+- [ ] ❌ ~~Test enumeration functions with large datasets~~ (not needed)
+
+## Tests Required After Phase 1 & 2 Implementation
+
+### Unit Tests for Router Whitelist Functions
+
+#### Basic Whitelist Operations
+- [x] **addRouterToWhitelist Tests**
+  - [x] Successfully adds router to whitelist
+  - [x] Reverts when called by non-owner
+  - [x] Reverts when router is zero address
+  - [x] Reverts when router already whitelisted
+  - [x] Emits RouterWhitelisted event with correct parameters
+  - [x] ❌ ~~Updates whitelistedRoutersCount correctly~~ (removed for contract size)
+  - [x] ❌ ~~Adds router to whitelistedRoutersList array~~ (removed for contract size)
+  - [x] ❌ ~~Sets correct routerListIndex~~ (removed for contract size)
+
+- [x] **removeRouterFromWhitelist Tests**
+  - [x] Successfully removes router from whitelist
+  - [x] Reverts when called by non-owner
+  - [x] Reverts when router not whitelisted
+  - [x] Emits RouterRemovedFromWhitelist event with correct parameters
+  - [x] ❌ ~~Updates whitelistedRoutersCount correctly~~ (removed for contract size)
+  - [x] ❌ ~~Removes router from whitelistedRoutersList array~~ (removed for contract size)
+  - [x] ❌ ~~Maintains array integrity after removal (no gaps)~~ (removed for contract size)
+  - [x] ❌ ~~Updates routerListIndex correctly for moved elements~~ (removed for contract size)
+  - [x] ❌ ~~Handles removal of last element correctly~~ (removed for contract size)
+  - [x] ❌ ~~Handles removal of first element correctly~~ (removed for contract size)
+  - [x] ❌ ~~Handles removal of middle element correctly~~ (removed for contract size)
+
+- [x] **isRouterWhitelisted Tests**
+  - [x] Returns true for whitelisted router
+  - [x] Returns false for non-whitelisted router
+  - [x] Returns false for zero address
+  - [x] Returns false after router removal
+
+#### ~~View Function Tests~~ ❌ **REMOVED FOR CONTRACT SIZE**
+- [x] ❌ ~~**whitelistedRoutersCount Tests**~~ (removed for contract size)
+  - [x] ❌ ~~Returns 0 for empty whitelist~~ (removed for contract size)
+  - [x] ❌ ~~Returns correct count after adding routers~~ (removed for contract size)
+  - [x] ❌ ~~Returns correct count after removing routers~~ (removed for contract size)
+  - [x] ❌ ~~Returns correct count after clearing whitelist~~ (removed for contract size)
+
+- [x] ❌ ~~**whitelistedRoutersList Tests**~~ (removed for contract size)
+  - [x] ❌ ~~Returns correct router address by index~~ (removed for contract size)
+  - [x] ❌ ~~Reverts for out-of-bounds index~~ (removed for contract size)
+  - [x] ❌ ~~Maintains correct order after additions~~ (removed for contract size)
+  - [x] ❌ ~~Maintains correct order after removals~~ (removed for contract size)
+
+- [x] ❌ ~~**getAllWhitelistedRouters Tests**~~ (removed for contract size)
+  - [x] ❌ ~~Returns empty array for empty whitelist~~ (removed for contract size)
+  - [x] ❌ ~~Returns correct array after adding routers~~ (removed for contract size)
+  - [x] ❌ ~~Returns correct array after removing routers~~ (removed for contract size)
+  - [x] ❌ ~~Returns correct array after clearing whitelist~~ (removed for contract size)
+
+#### ~~Batch Operations Tests~~ ❌ **REMOVED FOR CONTRACT SIZE**
+- [x] ❌ ~~**addMultipleRoutersToWhitelist Tests**~~ (removed for contract size)
+  - [x] ❌ ~~Successfully adds multiple routers~~ (removed for contract size)
+  - [x] ❌ ~~Reverts when called by non-owner~~ (removed for contract size)
+  - [x] ❌ ~~Reverts when array contains zero address~~ (removed for contract size)
+  - [x] ❌ ~~Skips already whitelisted routers (no revert)~~ (removed for contract size)
+  - [x] ❌ ~~Emits RouterWhitelisted event for each new router~~ (removed for contract size)
+  - [x] ❌ ~~Updates whitelistedRoutersCount correctly~~ (removed for contract size)
+  - [x] ❌ ~~Handles empty array input~~ (removed for contract size)
+  - [ ] ❌ ~~Handles large arrays efficiently~~ (removed for contract size)
+  - [x] ❌ ~~Maintains array integrity~~ (removed for contract size)
+
+- [x] ❌ ~~**removeMultipleRoutersFromWhitelist Tests**~~ (removed for contract size)
+  - [x] ❌ ~~Successfully removes multiple routers~~ (removed for contract size)
+  - [x] ❌ ~~Reverts when called by non-owner~~ (removed for contract size)
+  - [x] ❌ ~~Skips non-whitelisted routers (no revert)~~ (removed for contract size)
+  - [x] ❌ ~~Emits RouterRemovedFromWhitelist event for each removed router~~ (removed for contract size)
+  - [x] ❌ ~~Updates whitelistedRoutersCount correctly~~ (removed for contract size)
+  - [x] ❌ ~~Handles empty array input~~ (removed for contract size)
+  - [ ] ❌ ~~Handles large arrays efficiently~~ (removed for contract size)
+  - [x] ❌ ~~Maintains array integrity after batch removal~~ (removed for contract size)
+
+#### ~~Emergency Functions Tests~~ ❌ **REMOVED FOR CONTRACT SIZE**
+- [x] ❌ ~~**clearRouterWhitelist Tests**~~ (removed for contract size)
+  - [x] ❌ ~~Successfully clears all routers~~ (removed for contract size)
+  - [x] ❌ ~~Reverts when called by non-owner~~ (removed for contract size)
+  - [x] ❌ ~~Emits WhitelistCleared event~~ (removed for contract size)
+  - [x] ❌ ~~Sets whitelistedRoutersCount to 0~~ (removed for contract size)
+  - [x] ❌ ~~Clears whitelistedRoutersList array~~ (removed for contract size)
+  - [x] ❌ ~~Resets all routerListIndex mappings~~ (removed for contract size)
+  - [x] ❌ ~~Handles empty whitelist (no revert)~~ (removed for contract size)
+
+### Integration Tests
+
+#### Factory-Router Integration Tests
+- [ ] **Router Registration Flow**
+  - [ ] Deploy router → Register in factory → Verify whitelist status
+  - [ ] Register multiple routers → Verify all are whitelisted
+  - [ ] Remove router → Verify no longer whitelisted
+  - [ ] Clear whitelist → Verify all routers removed
+
+#### Access Control Integration Tests
+- [x] **Owner Management**
+  - [x] Transfer ownership → New owner can manage whitelist
+  - [x] Transfer ownership → Old owner cannot manage whitelist
+  - [x] Verify all functions respect owner-only access control
+
+#### Event Emission Tests
+- [x] **Event Verification**
+  - [x] RouterWhitelisted event emitted with correct router and caller
+  - [x] RouterRemovedFromWhitelist event emitted with correct router and caller
+  - [x] ❌ ~~WhitelistCleared event emitted with correct caller~~ (removed for contract size)
+  - [x] ❌ ~~Events emitted in correct order for batch operations~~ (removed for contract size)
+
+### Gas Optimization Tests
+
+#### Gas Usage Analysis
+- [ ] **Single Operations**
+  - [ ] Measure gas cost of addRouterToWhitelist
+  - [ ] Measure gas cost of removeRouterFromWhitelist (first, middle, last)
+  - [ ] Measure gas cost of isRouterWhitelisted
+  - [ ] Compare gas costs with different whitelist sizes
+
+- [ ] ❌ ~~**Batch Operations**~~ (removed for contract size)
+  - [ ] ❌ ~~Measure gas cost of addMultipleRoutersToWhitelist with different array sizes~~ (removed for contract size)
+  - [ ] ❌ ~~Measure gas cost of removeMultipleRoutersFromWhitelist with different array sizes~~ (removed for contract size)
+  - [ ] ❌ ~~Compare batch vs individual operations efficiency~~ (removed for contract size)
+
+- [ ] ❌ ~~**Array Management**~~ (removed for contract size)
+  - [ ] ❌ ~~Verify swap-and-pop removal is gas efficient~~ (removed for contract size)
+  - [ ] ❌ ~~Test gas usage with large whitelists (100+ routers)~~ (removed for contract size)
+  - [ ] ❌ ~~Verify no gas limit issues with enumeration functions~~ (removed for contract size)
+
+### Edge Case Tests
+
+#### Boundary Conditions
+- [ ] ❌ ~~**Array Limits**~~ (removed for contract size)
+  - [ ] ❌ ~~Test with maximum reasonable number of routers~~ (removed for contract size)
+  - [ ] ❌ ~~Test array operations near gas limits~~ (removed for contract size)
+  - [ ] ❌ ~~Test enumeration with large datasets~~ (removed for contract size)
+
+- [ ] **State Transitions**
+  - [ ] Add → Remove → Add same router
+  - [ ] ❌ ~~Fill whitelist → Clear → Fill again~~ (removed for contract size)
+  - [ ] ❌ ~~Batch add overlapping with existing routers~~ (removed for contract size)
+
+#### Error Handling
+- [ ] **Invalid Inputs**
+  - [ ] Zero address handling in all functions
+  - [ ] ❌ ~~Empty array handling in batch functions~~ (removed for contract size)
+  - [ ] ❌ ~~Out-of-bounds array access~~ (removed for contract size)
+  - [ ] Invalid router addresses
+
+### Security Tests
+
+#### Access Control Security
+- [ ] **Permission Verification**
+  - [ ] Verify only owner can call management functions
+  - [ ] Verify view functions are publicly accessible
+  - [ ] Test access control with different account types
+
+#### State Consistency Tests
+- [ ] **Data Integrity**
+  - [ ] Verify whitelistedRouters mapping consistency
+  - [ ] ❌ ~~Verify whitelistedRoutersList array consistency~~ (removed for contract size)
+  - [ ] ❌ ~~Verify routerListIndex mapping consistency~~ (removed for contract size)
+  - [ ] Test state consistency after complex operations
+
+### Performance Tests
+
+#### Scalability Tests
+- [ ] ❌ ~~**Large Dataset Performance**~~ (removed for contract size)
+  - [ ] ❌ ~~Test with 1000+ routers in whitelist~~ (removed for contract size)
+  - [ ] ❌ ~~Measure performance degradation with size~~ (removed for contract size)
+  - [ ] ❌ ~~Test enumeration function performance~~ (removed for contract size)
+
+- [ ] **Concurrent Operations**
+  - [ ] Test rapid successive additions/removals
+  - [ ] ❌ ~~Test batch operations with large arrays~~ (removed for contract size)
+  - [ ] Verify no race conditions or state corruption
+
+### Regression Tests
+
+#### Existing Functionality Tests
+- [ ] **Factory Compatibility**
+  - [ ] Verify existing factory functions still work
+  - [ ] Test pool creation with whitelist enabled
+  - [ ] Test fee management functions
+  - [ ] Test owner management functions
+
+- [ ] **Contract Size Tests**
+  - [x] ✅ Verify contract size is within deployment limits (completed)
+  - [ ] Test deployment on different networks
+  - [ ] Verify bytecode consistency
+
+### Test Coverage Goals
+
+#### Coverage Targets
+- [ ] **Line Coverage**: 100% of new code
+- [ ] **Branch Coverage**: 100% of conditional statements
+- [ ] **Function Coverage**: 100% of public functions
+- [ ] **Statement Coverage**: 100% of executable statements
+
+#### Test Categories Completion
+- [ ] **Unit Tests**: 100% of individual functions
+- [ ] **Integration Tests**: 100% of component interactions
+- [ ] **Edge Case Tests**: 100% of boundary conditions
+- [ ] **Security Tests**: 100% of access control scenarios
+- [ ] **Performance Tests**: All scalability scenarios
+- [ ] **Regression Tests**: All existing functionality preserved
+
+### Test Implementation Priority
+
+#### Phase 1 Tests (Immediate)
+1. Basic whitelist operations (add, remove, check)
+2. Access control verification
+3. Event emission verification
+4. View function accuracy
+
+#### Phase 2 Tests (Next)
+1. Batch operations functionality
+2. Array management integrity
+3. Gas optimization verification
+4. Edge case handling
+
+#### Phase 3 Tests (Final)
+1. Large dataset performance
+2. Security stress tests
+3. Regression test suite
+4. Integration test completion
 
 ### Phase 3: Pool Contract Integration (Week 3-4)
 

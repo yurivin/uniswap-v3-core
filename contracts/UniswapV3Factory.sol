@@ -19,6 +19,10 @@ contract UniswapV3Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegat
     /// @inheritdoc IUniswapV3Factory
     mapping(address => mapping(address => mapping(uint24 => address))) public override getPool;
 
+    /// @notice Mapping to track whitelisted routers
+    /// @dev router address => is whitelisted
+    mapping(address => bool) public whitelistedRouters;
+
     constructor() {
         owner = msg.sender;
         emit OwnerChanged(address(0), msg.sender);
@@ -69,5 +73,30 @@ contract UniswapV3Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegat
 
         feeAmountTickSpacing[fee] = tickSpacing;
         emit FeeAmountEnabled(fee, tickSpacing);
+    }
+
+    /// @inheritdoc IUniswapV3Factory
+    function isRouterWhitelisted(address router) external view override returns (bool) {
+        return whitelistedRouters[router];
+    }
+
+    /// @inheritdoc IUniswapV3Factory
+    function addRouterToWhitelist(address router) external override {
+        require(msg.sender == owner);
+        require(router != address(0));
+        require(!whitelistedRouters[router]);
+        
+        whitelistedRouters[router] = true;
+        emit RouterWhitelisted(router, msg.sender);
+    }
+
+    /// @inheritdoc IUniswapV3Factory
+    function removeRouterFromWhitelist(address router) external override {
+        require(msg.sender == owner);
+        require(router != address(0));
+        require(whitelistedRouters[router]);
+        
+        whitelistedRouters[router] = false;
+        emit RouterRemovedFromWhitelist(router, msg.sender);
     }
 }

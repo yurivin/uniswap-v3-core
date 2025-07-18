@@ -28,6 +28,20 @@ interface IUniswapV3Factory {
     /// @param tickSpacing The minimum number of ticks between initialized ticks for pools created with the given fee
     event FeeAmountEnabled(uint24 indexed fee, int24 indexed tickSpacing);
 
+    /// @notice Emitted when a router is added to the whitelist
+    /// @param router The router address that was whitelisted
+    /// @param caller The address that added the router
+    event RouterWhitelisted(address indexed router, address indexed caller);
+
+    /// @notice Emitted when a router is removed from the whitelist
+    /// @param router The router address that was removed
+    /// @param caller The address that removed the router
+    event RouterRemovedFromWhitelist(address indexed router, address indexed caller);
+
+    /// @notice Emitted when all routers are cleared from whitelist
+    /// @param caller The address that cleared the whitelist
+    event WhitelistCleared(address indexed caller);
+
     /// @notice Returns the current owner of the factory
     /// @dev Can be changed by the current owner via setOwner
     /// @return The address of the factory owner
@@ -75,4 +89,19 @@ interface IUniswapV3Factory {
     /// @param fee The fee amount to enable, denominated in hundredths of a bip (i.e. 1e-6)
     /// @param tickSpacing The spacing between ticks to be enforced for all pools created with the given fee amount
     function enableFeeAmount(uint24 fee, int24 tickSpacing) external;
+
+    /// @notice Returns whether a router is whitelisted
+    /// @param router The router address to check
+    /// @return True if the router is whitelisted
+    function isRouterWhitelisted(address router) external view returns (bool);
+
+    /// @notice Adds a router to the whitelist
+    /// @dev Can only be called by the factory owner
+    /// @param router The router address to whitelist
+    function addRouterToWhitelist(address router) external;
+
+    /// @notice Removes a router from the whitelist
+    /// @dev Can only be called by the factory owner
+    /// @param router The router address to remove
+    function removeRouterFromWhitelist(address router) external;
 }
