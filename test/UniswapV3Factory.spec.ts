@@ -1,4 +1,3 @@
-import { Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
 import { UniswapV3Factory } from '../typechain/UniswapV3Factory'
 import { expect } from './shared/expect'
@@ -16,18 +15,20 @@ const TEST_ADDRESSES: [string, string] = [
 const createFixtureLoader = waffle.createFixtureLoader
 
 describe('UniswapV3Factory', () => {
-  let wallet: Wallet, other: Wallet
+  let wallet: SignerWithAddress, other: SignerWithAddress
 
   let factory: UniswapV3Factory
   let poolBytecode: string
   const fixture = async () => {
     const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-    return (await factoryFactory.deploy()) as UniswapV3Factory
+    return (await factoryFactory.deploy()) as unknown as UniswapV3Factory
   }
 
   let loadFixture: ReturnType<typeof createFixtureLoader>
   before('create fixture loader', async () => {
-    ;[wallet, other] = await (ethers as any).getSigners()
+    const signers = await ethers.getSigners()
+    wallet = signers[0]
+    other = signers[1]
 
     loadFixture = createFixtureLoader([wallet, other])
   })
