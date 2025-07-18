@@ -18,6 +18,24 @@ This document outlines the implementation plan for adding router whitelist funct
 - **Partnership Management**: Approve third-party routers for swap referrer fees
 - **Emergency Response**: Quickly remove compromised routers from whitelist
 
+### **Key Principle: Whitelist Only Affects Swap Referrer Fees**
+
+**IMPORTANT**: The router whitelist serves a **single, specific purpose**:
+- **✅ Whitelisted routers**: Can set swap referrer addresses and receive swap referrer fees
+- **❌ Non-whitelisted routers**: Cannot receive swap referrer fees (referrer address ignored)
+- **✅ All routers**: Can still perform all normal swap operations without restrictions
+
+**The whitelist does NOT affect**:
+- Normal swap functionality
+- Pool access or permissions
+- Token transfers or approvals
+- Any other pool operations
+
+**The whitelist ONLY affects**:
+- Whether swap referrer fees are processed and sent to the referrer
+- Whether the provided referrer address is honored or ignored
+- **Non-whitelisted routers**: Swap referrer fees are added to protocol fees instead
+
 ## Current Factory Structure Analysis
 
 ### Existing Factory Functionality
@@ -70,6 +88,19 @@ event RouterRemovedFromWhitelist(address indexed router, address indexed caller)
 /// @notice Emitted when all routers are cleared from whitelist
 /// @param caller The address that cleared the whitelist
 event WhitelistCleared(address indexed caller);
+
+/// @notice Emitted when swap referrer fees are paid to a referrer (whitelisted router)
+/// @param router The router that processed the swap
+/// @param referrer The referrer that received the fees
+/// @param amount0 The amount of token0 fees paid
+/// @param amount1 The amount of token1 fees paid
+event SwapReferrerFeePaid(address indexed router, address indexed referrer, uint256 amount0, uint256 amount1);
+
+/// @notice Emitted when swap referrer fees are added to protocol fees (non-whitelisted router)
+/// @param router The router that processed the swap
+/// @param amount0 The amount of token0 fees added to protocol fees
+/// @param amount1 The amount of token1 fees added to protocol fees
+event SwapReferrerFeeAddedToProtocol(address indexed router, uint256 amount0, uint256 amount1);
 ```
 
 ### 3. Interface Updates
@@ -121,23 +152,19 @@ function clearRouterWhitelist() external;
 
 ### 4. Access Control Implementation
 
-#### Owner-only modifier (already exists in UniswapV3Factory)
+#### Owner-only access control (using existing factory pattern)
 ```solidity
-/// @dev Modifier to restrict function access to factory owner only
-modifier onlyOwner() {
-    require(msg.sender == owner, 'NOT_OWNER');
-    _;
-}
-```
-
-#### Alternative: Use OpenZeppelin Ownable
-```solidity
-import "@openzeppelin/contracts/access/Ownable.sol";
-
-contract UniswapV3Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCall, Ownable {
-    // ... existing code
+/// @dev UniswapV3Factory already has owner functionality
+/// @dev Uses existing owner variable and access control pattern
+contract UniswapV3Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCall {
+    // Existing owner functionality in UniswapV3Factory
+    address public owner;
     
-    // All whitelist functions use onlyOwner modifier from OpenZeppelin
+    /// @dev All whitelist functions use the existing owner access control
+    modifier onlyFactoryOwner() {
+        require(msg.sender == owner, 'NOT_OWNER');
+        _;
+    }
 }
 ```
 
@@ -284,37 +311,14 @@ function getAllWhitelistedRouters() external view override returns (address[] me
 
 ### 6. Pool Integration
 
-#### Add router validation to pool contracts
+#### Pool validation approach (NO ACCESS RESTRICTION)
 ```solidity
-/// @notice Validates that the caller is a whitelisted router
-/// @dev Should be called before processing referrer fees
-modifier onlyWhitelistedRouter() {
-    require(
-        IUniswapV3Factory(factory).whitelistedRouters(msg.sender),
-        'ROUTER_NOT_WHITELISTED'
-    );
-    _;
-}
+/// @notice Pool does NOT restrict access - all routers can call swap
+/// @dev Whitelist only affects referrer fee processing, not swap access
+/// @dev NO onlyWhitelistedRouter modifier needed
 ```
 
-#### Modified pool swap function
-```solidity
-/// @inheritdoc IUniswapV3PoolActions
-function swap(
-    address recipient,
-    bool zeroForOne,
-    int256 amountSpecified,
-    uint160 sqrtPriceLimitX96,
-    address swapReferrer,
-    bytes calldata data
-) external override noDelegateCall onlyWhitelistedRouter returns (int256 amount0, int256 amount1) {
-    require(amountSpecified != 0, 'AS');
-    
-    // ... rest of swap logic with swap referrer fee processing
-}
-```
-
-#### Alternative: Conditional swap referrer fee processing
+#### Modified pool swap function (CORRECT IMPLEMENTATION)
 ```solidity
 /// @inheritdoc IUniswapV3PoolActions
 function swap(
@@ -327,16 +331,107 @@ function swap(
 ) external override noDelegateCall returns (int256 amount0, int256 amount1) {
     require(amountSpecified != 0, 'AS');
     
-    // Only process swap referrer fees if called from whitelisted router
-    address effectiveSwapReferrer = IUniswapV3Factory(factory).whitelistedRouters(msg.sender) 
-        ? swapReferrer 
-        : address(0);
+    // CORE PRINCIPLE: Whitelist ONLY affects swap referrer fees
+    // All swaps work normally regardless of whitelist status
     
-    // ... rest of swap logic using effectiveSwapReferrer
+    // Process swap referrer fees based on router whitelist status
+    address effectiveSwapReferrer;
+    bool addToProtocolFee = false;
+    
+    if (IUniswapV3Factory(factory).whitelistedRouters(msg.sender)) {
+        effectiveSwapReferrer = swapReferrer;     // Whitelisted: Honor referrer address
+    } else {
+        effectiveSwapReferrer = address(0);       // Non-whitelisted: No referrer
+        addToProtocolFee = true;                  // Add referrer fee to protocol fee
+    }
+    
+    // ... rest of swap logic using effectiveSwapReferrer and addToProtocolFee
+    // NOTE: Swap proceeds normally in both cases - only referrer fee destination differs
 }
 ```
 
-### 7. Router Registration Process
+#### Fee Distribution Logic Implementation
+```solidity
+/// @notice Enhanced swap function with protocol fee accumulation for non-whitelisted routers
+function _processSwapReferrerFees(
+    uint256 swapFeeAmount0,
+    uint256 swapFeeAmount1,
+    address swapReferrer,
+    address router,
+    bool addToProtocolFee
+) internal {
+    // Calculate referrer fees from swap fees
+    uint256 referrerFee0 = (swapFeeAmount0 * feeSwapReferrer0) / 255;
+    uint256 referrerFee1 = (swapFeeAmount1 * feeSwapReferrer1) / 255;
+    
+    if (addToProtocolFee) {
+        // Non-whitelisted router: Add referrer fees to protocol fees
+        protocolFees.token0 += referrerFee0;
+        protocolFees.token1 += referrerFee1;
+        
+        emit SwapReferrerFeeAddedToProtocol(router, referrerFee0, referrerFee1);
+    } else if (swapReferrer != address(0)) {
+        // Whitelisted router: Send referrer fees to specified referrer
+        if (referrerFee0 > 0) TransferHelper.safeTransfer(token0, swapReferrer, referrerFee0);
+        if (referrerFee1 > 0) TransferHelper.safeTransfer(token1, swapReferrer, referrerFee1);
+        
+        emit SwapReferrerFeePaid(router, swapReferrer, referrerFee0, referrerFee1);
+    }
+    
+    // Remaining fees go to liquidity providers as normal
+    uint256 lpFee0 = swapFeeAmount0 - referrerFee0;
+    uint256 lpFee1 = swapFeeAmount1 - referrerFee1;
+    
+    // Distribute LP fees through normal fee growth mechanism
+    _distributeLPFees(lpFee0, lpFee1);
+}
+```
+
+### 7. Updated Fee Hierarchy
+
+#### Fee Distribution Flow
+With the router whitelist system, the fee distribution follows this hierarchy:
+
+```
+Total Swap Fees (100%)
+├── Protocol Fee (extracted first)
+├── Swap Referrer Fee (extracted second)
+│   ├── Whitelisted Router → Sent to specified referrer address
+│   └── Non-whitelisted Router → Added to protocol fees
+└── Liquidity Provider Fee (remainder) → Distributed to positions
+```
+
+#### Fee Calculation Examples
+
+**Example 1: Whitelisted Router**
+- Total swap fee: 100 tokens
+- Protocol fee (10%): 10 tokens → Protocol treasury
+- Swap referrer fee (5%): 5 tokens → Referrer address
+- LP fee (85%): 85 tokens → Liquidity providers
+
+**Example 2: Non-whitelisted Router**
+- Total swap fee: 100 tokens
+- Protocol fee (10%): 10 tokens → Protocol treasury
+- Swap referrer fee (5%): 5 tokens → **Added to protocol fees**
+- LP fee (85%): 85 tokens → Liquidity providers
+- **Effective protocol fee: 15 tokens total**
+
+#### Benefits of This Approach
+
+1. **No Fee Loss**: Swap referrer fees are never lost or wasted
+2. **Protocol Revenue**: Non-whitelisted routers contribute more to protocol treasury
+3. **Incentive Structure**: Encourages routers to get whitelisted for referrer benefits
+4. **Backward Compatibility**: Existing routers continue working without changes
+5. **Security**: Prevents malicious routers from extracting referrer fees
+
+#### Economic Implications
+
+- **Whitelisted routers**: Standard fee structure with referrer benefits
+- **Non-whitelisted routers**: Higher effective protocol fees (referrer fees go to protocol)
+- **Protocol treasury**: Receives additional revenue from non-whitelisted router usage
+- **Liquidity providers**: Unaffected - receive same LP fees regardless of router type
+
+### 8. Router Registration Process
 
 #### Initial router registration
 ```solidity
@@ -490,10 +585,24 @@ function unpauseWhitelist() external {
 
 ### 13. Alternative Implementations
 
-#### Option 1: Strict Validation (Recommended)
+#### Option 1: Strict Validation (NOT RECOMMENDED - Conflicts with Uniswap V3 Design)
 - All swap referrer fee processing requires whitelisted router
 - Maximum security and control
 - May require router updates for compliance
+
+**❌ Why This Option is NOT Used:**
+- **Conflicts with Uniswap V3 Core Design**: Uniswap V3 is explicitly designed for permissionless access where "anyone in the world can access financial services"
+- **Direct Pool Access**: Users and contracts can interact directly with pools without routers through the callback pattern
+- **Router-Free Swaps**: The protocol supports direct pool swaps via `pool.swap()` without any router intermediary
+- **Architectural Philosophy**: Uniswap V3 follows a core/periphery design where routers are optional convenience contracts with "no special privileges"
+- **Breaking Change**: Would fundamentally alter the permissionless nature of the protocol
+- **Innovation Barrier**: Would prevent new router development and direct pool integrations
+
+**Technical Evidence:**
+- Pool interfaces explicitly state "Permissionless pool actions that can be called by anyone"
+- Test contracts demonstrate direct pool interaction without routers
+- Core documentation emphasizes "no ability to selectively restrict who can or cannot use them"
+- Callback pattern enables secure direct pool access for any smart contract
 
 #### Option 2: Permissive with Warnings
 - Allow non-whitelisted routers but emit warnings
@@ -504,6 +613,12 @@ function unpauseWhitelist() external {
 - Pool-level configuration for router validation
 - Flexible but more complex
 - Allows different pools to have different policies
+
+#### Option 4: Fee Redirection (RECOMMENDED - Current Implementation)
+- All routers can swap normally without restrictions
+- Whitelisted routers: Swap referrer fees go to specified referrer
+- Non-whitelisted routers: Swap referrer fees are added to protocol fees
+- Maintains permissionless access while providing security and incentives
 
 ### 14. Governance Integration
 
@@ -525,32 +640,242 @@ function proposeRouterWhitelisting(
 - Separate roles for different router types
 - Time delays for router removal
 
+## Implementation Task Sequence
+
+### Phase 1: Factory Contract Updates (Week 1-2)
+
+#### Task 1.1: Add Storage Structures
+- [ ] Add `mapping(address => bool) public whitelistedRouters` to UniswapV3Factory
+- [ ] Add `address[] public whitelistedRoutersList` for enumeration
+- [ ] Add `mapping(address => uint256) private routerListIndex` for efficient removal
+- [ ] Update contract storage layout documentation
+
+#### Task 1.2: Implement Core Interface Functions
+- [ ] Add `addRouterToWhitelist(address router)` function
+- [ ] Add `removeRouterFromWhitelist(address router)` function  
+- [ ] Add `isRouterWhitelisted(address router)` view function
+- [ ] Add `getWhitelistedRoutersCount()` view function
+- [ ] Add `getAllWhitelistedRouters()` view function
+
+#### Task 1.3: Add Events
+- [ ] Add `RouterWhitelisted(address indexed router, address indexed caller)` event
+- [ ] Add `RouterRemovedFromWhitelist(address indexed router, address indexed caller)` event
+- [ ] Add `WhitelistCleared(address indexed caller)` event
+- [ ] Add `SwapReferrerFeePaid(address indexed router, address indexed referrer, uint256 amount0, uint256 amount1)` event
+- [ ] Add `SwapReferrerFeeAddedToProtocol(address indexed router, uint256 amount0, uint256 amount1)` event
+
+#### Task 1.4: Implement Access Control
+- [ ] Use existing factory owner pattern (`require(msg.sender == owner, 'NOT_OWNER')`)
+- [ ] Apply owner check to all whitelist management functions
+- [ ] Add input validation (non-zero addresses, duplicate prevention)
+- [ ] Add proper error messages for all failure cases
+
+### Phase 2: Batch Operations Implementation (Week 2-3)
+
+#### Task 2.1: Batch Add/Remove Functions
+- [ ] Implement `addMultipleRoutersToWhitelist(address[] calldata routers)`
+- [ ] Implement `removeMultipleRoutersFromWhitelist(address[] calldata routers)`
+- [ ] Add array length validation and gas optimization
+- [ ] Add batch operation events
+
+#### Task 2.2: Emergency Functions
+- [ ] Implement `clearRouterWhitelist()` for emergency situations
+- [ ] Add `emergencyRemoveRouter(address router)` for quick removal
+- [ ] Add pause/unpause functionality for whitelist operations
+- [ ] Create emergency response procedures
+
+#### Task 2.3: Enumeration Optimization
+- [ ] Optimize array management for gas efficiency
+- [ ] Implement efficient removal with swap-and-pop pattern
+- [ ] Add bounds checking for all array operations
+- [ ] Test enumeration functions with large datasets
+
+### Phase 3: Pool Contract Integration (Week 3-4)
+
+#### Task 3.1: Pool Swap Referrer Fee Processing
+- [ ] Implement conditional swap referrer fee processing in pool contracts
+- [ ] Add router whitelist validation (NO access restrictions - only affects fee processing)
+- [ ] Create `_processSwapReferrerFees()` internal function
+- [ ] Update swap function to handle both whitelisted and non-whitelisted routers
+
+#### Task 3.2: Swap Function Updates
+- [ ] Modify `swap()` function to accept `swapReferrer` parameter
+- [ ] Add conditional logic for fee processing based on router whitelist status
+- [ ] Implement fee redirection: whitelisted → referrer, non-whitelisted → protocol fees
+- [ ] Ensure backward compatibility with existing swap calls (NO breaking changes)
+- [ ] Add swap referrer fee processing logic without restricting pool access
+
+#### Task 3.3: Pool-Factory Communication and Events
+- [ ] Implement factory address validation in pools
+- [ ] Add factory whitelist query functionality
+- [ ] Ensure secure communication between pools and factory
+- [ ] Add new events: `SwapReferrerFeePaid` and `SwapReferrerFeeAddedToProtocol`
+- [ ] Test factory-pool integration scenarios
+- [ ] Test fee redirection logic for both whitelisted and non-whitelisted routers
+
+### Phase 4: Router Registration and Management (Week 4-5)
+
+#### Task 4.1: Initial Router Registration
+- [ ] Create deployment script for router registration
+- [ ] Register official Uniswap routers (SwapRouter, etc.)
+- [ ] Add router metadata tracking (optional)
+- [ ] Create router approval workflow
+
+#### Task 4.2: Router Lifecycle Management
+- [ ] Implement router versioning support
+- [ ] Add router deprecation procedures
+- [ ] Create router upgrade pathways
+- [ ] Document router approval criteria
+
+#### Task 4.3: Third-Party Router Integration
+- [ ] Create third-party router approval process
+- [ ] Add router validation requirements
+- [ ] Implement router testing procedures
+- [ ] Create router integration documentation
+
+### Phase 5: Testing and Validation (Week 5-6)
+
+#### Task 5.1: Unit Testing
+- [ ] Write comprehensive tests for all whitelist functions
+- [ ] Test access control mechanisms
+- [ ] Test edge cases (empty lists, duplicate entries, etc.)
+- [ ] Test batch operations with various array sizes
+
+#### Task 5.2: Integration Testing
+- [ ] Test factory-pool integration scenarios
+- [ ] Test swap referrer fee processing with whitelisted routers (fees → referrer)
+- [ ] Test swap referrer fee processing with non-whitelisted routers (fees → protocol)
+- [ ] Test router registration and removal workflows
+- [ ] Test emergency procedures and recovery scenarios
+- [ ] Verify permissionless pool access is maintained for all routers
+- [ ] Test fee redirection logic with various scenarios
+
+#### Task 5.3: Gas Optimization Testing
+- [ ] Measure gas costs for all whitelist operations
+- [ ] Optimize batch operations for gas efficiency
+- [ ] Test gas usage with large router lists
+- [ ] Compare gas costs before/after implementation
+
+#### Task 5.4: Security Testing
+- [ ] Test access control bypasses
+- [ ] Test reentrancy protection
+- [ ] Test integer overflow/underflow scenarios
+- [ ] Test malicious router scenarios (verify they can't extract referrer fees)
+- [ ] Test that non-whitelisted routers cannot receive referrer fees
+- [ ] Verify protocol fees correctly accumulate from non-whitelisted routers
+- [ ] Test that pool access remains permissionless for all routers
+
+### Phase 6: Advanced Features (Week 6-7)
+
+#### Task 6.1: Governance Integration
+- [ ] Add governance proposal templates for router management
+- [ ] Implement timelock mechanisms for router changes
+- [ ] Add multi-sig support for critical operations
+- [ ] Create governance voting mechanisms
+
+#### Task 6.2: Monitoring and Analytics
+- [ ] Add comprehensive event logging for fee redirection
+- [ ] Create off-chain monitoring tools for whitelisted vs non-whitelisted router usage
+- [ ] Implement router performance tracking
+- [ ] Add usage analytics and reporting
+- [ ] Monitor protocol fee accumulation from non-whitelisted routers
+- [ ] Track referrer fee distribution patterns
+
+#### Task 6.3: Emergency Controls
+- [ ] Implement circuit breakers for abnormal activity
+- [ ] Add emergency pause mechanisms
+- [ ] Create automated response systems
+- [ ] Test emergency recovery procedures
+
+### Phase 7: Documentation and Deployment (Week 7-8)
+
+#### Task 7.1: Technical Documentation
+- [ ] Complete function documentation with NatSpec
+- [ ] Create integration guide for router developers
+- [ ] Document all events and their purposes (including new fee redirection events)
+- [ ] Create troubleshooting guide
+- [ ] Document fee redirection mechanism and its benefits
+- [ ] Explain permissionless access preservation in documentation
+
+#### Task 7.2: Deployment Preparation
+- [ ] Create deployment scripts for all contracts
+- [ ] Prepare contract verification procedures
+- [ ] Create post-deployment validation checklist
+- [ ] Prepare rollback procedures
+
+#### Task 7.3: Testnet Deployment
+- [ ] Deploy to Goerli testnet
+- [ ] Deploy to Sepolia testnet
+- [ ] Conduct end-to-end testing on testnets
+- [ ] Validate all functionality in testnet environment
+
+#### Task 7.4: Mainnet Deployment
+- [ ] Final security audit review
+- [ ] Deploy contracts to mainnet
+- [ ] Verify contract code on Etherscan
+- [ ] Register initial router whitelist
+
+### Phase 8: Post-Deployment Support (Week 8-9)
+
+#### Task 8.1: Monitoring and Maintenance
+- [ ] Monitor contract performance and gas usage
+- [ ] Track router registration and usage patterns
+- [ ] Monitor for security incidents or anomalies
+- [ ] Maintain router whitelist based on governance decisions
+
+#### Task 8.2: Community Support
+- [ ] Create developer documentation and guides
+- [ ] Provide support for router integration
+- [ ] Collect feedback from router developers
+- [ ] Address any issues or bugs discovered
+
+#### Task 8.3: Optimization and Improvements
+- [ ] Analyze performance metrics and optimize
+- [ ] Implement feedback from community usage
+- [ ] Plan future enhancements and features
+- [ ] Prepare for next version development
+
 ## Implementation Timeline
 
-### Phase 1: Core Whitelist Implementation
-1. Add storage mappings and events
-2. Implement basic add/remove functions
-3. Add enumeration support
+### Phase 1: Factory Contract Updates (Week 1-2)
+- Core storage and interface implementation
+- Basic whitelist management functions
+- Access control and validation
 
-### Phase 2: Batch Operations
-1. Implement batch add/remove functions
-2. Add emergency procedures
-3. Optimize gas usage
+### Phase 2: Batch Operations Implementation (Week 2-3)
+- Batch add/remove functionality
+- Emergency procedures and controls
+- Gas optimization for large operations
 
-### Phase 3: Pool Integration
-1. Add router validation to pools
-2. Implement referrer fee gating
-3. Test integration scenarios
+### Phase 3: Pool Contract Integration (Week 3-4)
+- Pool swap referrer fee processing (NO access restrictions)
+- Swap function updates for fee redirection
+- Factory-pool communication protocols and new events
 
-### Phase 4: Advanced Features
-1. Add pause/unpause functionality
-2. Implement monitoring tools
-3. Create governance integration
+### Phase 4: Router Registration and Management (Week 4-5)
+- Router lifecycle management
+- Third-party integration processes
+- Registration and approval workflows
 
-### Phase 5: Testing and Deployment
-1. Comprehensive testing
-2. Security audits
-3. Gradual rollout strategy
+### Phase 5: Testing and Validation (Week 5-6)
+- Comprehensive unit and integration testing
+- Gas optimization and security testing
+- Performance validation and benchmarking
+
+### Phase 6: Advanced Features (Week 6-7)
+- Governance integration and controls
+- Monitoring and analytics implementation
+- Emergency response systems
+
+### Phase 7: Documentation and Deployment (Week 7-8)
+- Technical documentation completion
+- Testnet and mainnet deployment
+- Contract verification and validation
+
+### Phase 8: Post-Deployment Support (Week 8-9)
+- Monitoring and maintenance
+- Community support and feedback
+- Optimization and future planning
 
 ## Benefits of This Implementation
 
