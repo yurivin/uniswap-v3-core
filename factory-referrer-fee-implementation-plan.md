@@ -234,35 +234,49 @@ function initializeExistingPoolSwapReferrerFees(
 
 ## Implementation Steps
 
-### Phase 1: Interface Updates
-1. Add new events to `IUniswapV3Factory.sol`
-2. Add new functions to `IUniswapV3Factory.sol`
-3. Update interface documentation
+**Note**: Implementation uses Factory Extension Pattern to overcome 24KB contract size limit.
 
-### Phase 2: Storage Implementation
-1. Add `poolSwapReferrerFees` mapping
-2. Add `defaultSwapReferrerFee` variable
-3. Update constructor if needed
+### Phase 1: Interface Updates ✅ **IMPLEMENTED**
+1. ✅ Add new events to `IUniswapV3FactoryExtensions.sol`
+2. ✅ Add new functions to `IUniswapV3FactoryExtensions.sol`
+3. ✅ Update interface documentation
 
-### Phase 3: Core Functions
-1. Implement `setDefaultSwapReferrerFee()`
-2. Implement `setPoolSwapReferrerFee()`
-3. Implement `getPoolSwapReferrerFees()` helper
-4. Add input validation and access control
+**Implementation Location**: `contracts/interfaces/IUniswapV3FactoryExtensions.sol`
 
-### Phase 4: Pool Creation Integration
-1. Modify `createPool()` to set default swap referrer fees
-2. Ensure proper initialization of new pools
+### Phase 2: Storage Implementation ✅ **IMPLEMENTED**
+1. ✅ Add `poolSwapReferrerFees` mapping
+2. ✅ Add `defaultSwapReferrerFee` variable
+3. ✅ Update constructor if needed
 
-### Phase 5: Batch Operations
-1. Implement `batchSetPoolSwapReferrerFees()`
-2. Implement `initializeExistingPoolSwapReferrerFees()`
+**Implementation Location**: `contracts/UniswapV3FactoryExtensions.sol`
 
-### Phase 6: Testing and Validation
-1. Unit tests for all new functions
-2. Integration tests with pool creation
-3. Access control tests
-4. Edge case validation
+### Phase 3: Core Functions ✅ **IMPLEMENTED**
+1. ✅ Implement `setDefaultSwapReferrerFee()`
+2. ✅ Implement `setPoolSwapReferrerFee()`
+3. ✅ Implement `getPoolSwapReferrerFees()` helper (via interface getter)
+4. ✅ Add input validation and access control
+
+**Implementation Location**: `contracts/UniswapV3FactoryExtensions.sol`
+
+### Phase 4: Pool Creation Integration ⏳ **PENDING**
+1. ❌ Modify `createPool()` to set default swap referrer fees
+2. ❌ Ensure proper initialization of new pools
+
+**Note**: Requires pool contract modifications to accept swap referrer fees.
+
+### Phase 5: Batch Operations ⏳ **PENDING**
+1. ❌ Implement `batchSetPoolSwapReferrerFees()`
+2. ❌ Implement `initializeExistingPoolSwapReferrerFees()`
+
+**Note**: Can be added to Extensions contract when needed.
+
+### Phase 6: Testing and Validation ✅ **IMPLEMENTED**
+1. ✅ Unit tests for all new functions
+2. ❌ Integration tests with pool creation
+3. ✅ Access control tests
+4. ✅ Edge case validation
+
+**Implementation Location**: `test/FactoryExtensionArchitecture.spec.ts`
 
 ## Security Considerations
 
