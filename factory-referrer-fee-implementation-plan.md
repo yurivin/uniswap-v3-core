@@ -1,7 +1,7 @@
-# UniswapV3Factory Referrer Fee Implementation Plan
+# UniswapV3Factory Swap Referrer Fee Implementation Plan
 
 ## Overview
-This document outlines the changes required to the UniswapV3Factory contract to support referrer fee functionality. The factory will manage referrer fee configurations for pools, similar to how it currently manages protocol fees.
+This document outlines the changes required to the UniswapV3Factory contract to support swap referrer fee functionality. The factory will manage swap referrer fee configurations for pools, similar to how it currently manages protocol fees.
 
 ## Current Factory Structure Analysis
 
@@ -18,128 +18,128 @@ The factory owner can:
 - Enable new fee amounts (`enableFeeAmount`)
 - Set protocol fees on pools (via pool's `setFeeProtocol`)
 
-## Proposed Referrer Fee Management
+## Proposed Swap Referrer Fee Management
 
 ### 1. Storage Additions
 
-#### Add referrer fee configuration mapping
+#### Add swap referrer fee configuration mapping
 ```solidity
-/// @dev Mapping from pool address to referrer fee configuration
-/// Uses same format as protocol fees: feeReferrer0 + (feeReferrer1 << 4)
-mapping(address => uint8) public poolReferrerFees;
+/// @dev Mapping from pool address to swap referrer fee configuration
+/// Uses same format as protocol fees: feeSwapReferrer0 + (feeSwapReferrer1 << 4)
+mapping(address => uint8) public poolSwapReferrerFees;
 ```
 
-#### Add default referrer fee configuration
+#### Add default swap referrer fee configuration
 ```solidity
-/// @dev Default referrer fee configuration for newly created pools
-/// Uses same format as protocol fees: feeReferrer0 + (feeReferrer1 << 4)
-/// Can be 0 (no referrer fees) or values between 4-20 (1/4 to 1/20 of swap fee)
-uint8 public defaultReferrerFee;
+/// @dev Default swap referrer fee configuration for newly created pools
+/// Uses same format as protocol fees: feeSwapReferrer0 + (feeSwapReferrer1 << 4)
+/// Can be 0 (no swap referrer fees) or values between 4-20 (1/4 to 1/20 of swap fee)
+uint8 public defaultSwapReferrerFee;
 ```
 
 ### 2. Interface Updates
 
 #### Add to IUniswapV3Factory.sol
 ```solidity
-/// @notice Emitted when the default referrer fee is changed
-/// @param oldDefaultReferrerFee The previous default referrer fee
-/// @param newDefaultReferrerFee The new default referrer fee
-event DefaultReferrerFeeChanged(uint8 oldDefaultReferrerFee, uint8 newDefaultReferrerFee);
+/// @notice Emitted when the default swap referrer fee is changed
+/// @param oldDefaultSwapReferrerFee The previous default swap referrer fee
+/// @param newDefaultSwapReferrerFee The new default swap referrer fee
+event DefaultSwapReferrerFeeChanged(uint8 oldDefaultSwapReferrerFee, uint8 newDefaultSwapReferrerFee);
 
-/// @notice Emitted when a pool's referrer fee is set
+/// @notice Emitted when a pool's swap referrer fee is set
 /// @param pool The pool address
-/// @param feeReferrer0Old The previous referrer fee for token0
-/// @param feeReferrer1Old The previous referrer fee for token1
-/// @param feeReferrer0New The new referrer fee for token0
-/// @param feeReferrer1New The new referrer fee for token1
-event PoolReferrerFeeSet(
+/// @param feeSwapReferrer0Old The previous swap referrer fee for token0
+/// @param feeSwapReferrer1Old The previous swap referrer fee for token1
+/// @param feeSwapReferrer0New The new swap referrer fee for token0
+/// @param feeSwapReferrer1New The new swap referrer fee for token1
+event PoolSwapReferrerFeeSet(
     address indexed pool,
-    uint8 feeReferrer0Old,
-    uint8 feeReferrer1Old,
-    uint8 feeReferrer0New,
-    uint8 feeReferrer1New
+    uint8 feeSwapReferrer0Old,
+    uint8 feeSwapReferrer1Old,
+    uint8 feeSwapReferrer0New,
+    uint8 feeSwapReferrer1New
 );
 
-/// @notice Returns the default referrer fee for newly created pools
-/// @return The default referrer fee configuration
-function defaultReferrerFee() external view returns (uint8);
+/// @notice Returns the default swap referrer fee for newly created pools
+/// @return The default swap referrer fee configuration
+function defaultSwapReferrerFee() external view returns (uint8);
 
-/// @notice Returns the referrer fee configuration for a specific pool
+/// @notice Returns the swap referrer fee configuration for a specific pool
 /// @param pool The pool address
-/// @return The referrer fee configuration (feeReferrer0 + (feeReferrer1 << 4))
-function poolReferrerFees(address pool) external view returns (uint8);
+/// @return The swap referrer fee configuration (feeSwapReferrer0 + (feeSwapReferrer1 << 4))
+function poolSwapReferrerFees(address pool) external view returns (uint8);
 
-/// @notice Sets the default referrer fee for newly created pools
+/// @notice Sets the default swap referrer fee for newly created pools
 /// @dev Can only be called by the factory owner
-/// @param _defaultReferrerFee The new default referrer fee
-function setDefaultReferrerFee(uint8 _defaultReferrerFee) external;
+/// @param _defaultSwapReferrerFee The new default swap referrer fee
+function setDefaultSwapReferrerFee(uint8 _defaultSwapReferrerFee) external;
 
-/// @notice Sets the referrer fee for a specific pool
+/// @notice Sets the swap referrer fee for a specific pool
 /// @dev Can only be called by the factory owner
 /// @param pool The pool address
-/// @param feeReferrer0 The referrer fee for token0 (0 or 4-20)
-/// @param feeReferrer1 The referrer fee for token1 (0 or 4-20)
-function setPoolReferrerFee(address pool, uint8 feeReferrer0, uint8 feeReferrer1) external;
+/// @param feeSwapReferrer0 The swap referrer fee for token0 (0 or 4-20)
+/// @param feeSwapReferrer1 The swap referrer fee for token1 (0 or 4-20)
+function setPoolSwapReferrerFee(address pool, uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external;
 ```
 
 ### 3. Implementation Functions
 
-#### setDefaultReferrerFee function
+#### setDefaultSwapReferrerFee function
 ```solidity
 /// @inheritdoc IUniswapV3Factory
-function setDefaultReferrerFee(uint8 _defaultReferrerFee) external override {
+function setDefaultSwapReferrerFee(uint8 _defaultSwapReferrerFee) external override {
     require(msg.sender == owner, 'NOT_OWNER');
     require(
-        _defaultReferrerFee == 0 || (_defaultReferrerFee >= 4 && _defaultReferrerFee <= 20),
-        'INVALID_REFERRER_FEE'
+        _defaultSwapReferrerFee == 0 || (_defaultSwapReferrerFee >= 4 && _defaultSwapReferrerFee <= 20),
+        'INVALID_SWAP_REFERRER_FEE'
     );
     
-    uint8 oldDefaultReferrerFee = defaultReferrerFee;
-    defaultReferrerFee = _defaultReferrerFee;
+    uint8 oldDefaultSwapReferrerFee = defaultSwapReferrerFee;
+    defaultSwapReferrerFee = _defaultSwapReferrerFee;
     
-    emit DefaultReferrerFeeChanged(oldDefaultReferrerFee, _defaultReferrerFee);
+    emit DefaultSwapReferrerFeeChanged(oldDefaultSwapReferrerFee, _defaultSwapReferrerFee);
 }
 ```
 
-#### setPoolReferrerFee function
+#### setPoolSwapReferrerFee function
 ```solidity
 /// @inheritdoc IUniswapV3Factory
-function setPoolReferrerFee(
+function setPoolSwapReferrerFee(
     address pool,
-    uint8 feeReferrer0,
-    uint8 feeReferrer1
+    uint8 feeSwapReferrer0,
+    uint8 feeSwapReferrer1
 ) external override {
     require(msg.sender == owner, 'NOT_OWNER');
     require(pool != address(0), 'INVALID_POOL');
     require(
-        (feeReferrer0 == 0 || (feeReferrer0 >= 4 && feeReferrer0 <= 20)) &&
-        (feeReferrer1 == 0 || (feeReferrer1 >= 4 && feeReferrer1 <= 20)),
-        'INVALID_REFERRER_FEE'
+        (feeSwapReferrer0 == 0 || (feeSwapReferrer0 >= 4 && feeSwapReferrer0 <= 20)) &&
+        (feeSwapReferrer1 == 0 || (feeSwapReferrer1 >= 4 && feeSwapReferrer1 <= 20)),
+        'INVALID_SWAP_REFERRER_FEE'
     );
     
-    uint8 currentFee = poolReferrerFees[pool];
-    uint8 feeReferrer0Old = currentFee % 16;
-    uint8 feeReferrer1Old = currentFee >> 4;
+    uint8 currentFee = poolSwapReferrerFees[pool];
+    uint8 feeSwapReferrer0Old = currentFee % 16;
+    uint8 feeSwapReferrer1Old = currentFee >> 4;
     
-    poolReferrerFees[pool] = feeReferrer0 + (feeReferrer1 << 4);
+    poolSwapReferrerFees[pool] = feeSwapReferrer0 + (feeSwapReferrer1 << 4);
     
-    // Update the pool's referrer fee configuration
-    IUniswapV3Pool(pool).setFeeReferrer(feeReferrer0, feeReferrer1);
+    // Update the pool's swap referrer fee configuration
+    IUniswapV3Pool(pool).setFeeSwapReferrer(feeSwapReferrer0, feeSwapReferrer1);
     
-    emit PoolReferrerFeeSet(pool, feeReferrer0Old, feeReferrer1Old, feeReferrer0, feeReferrer1);
+    emit PoolSwapReferrerFeeSet(pool, feeSwapReferrer0Old, feeSwapReferrer1Old, feeSwapReferrer0, feeSwapReferrer1);
 }
 ```
 
-#### Helper function to get referrer fee breakdown
+#### Helper function to get swap referrer fee breakdown
 ```solidity
-/// @notice Returns the referrer fee breakdown for a specific pool
+/// @notice Returns the swap referrer fee breakdown for a specific pool
 /// @param pool The pool address
-/// @return feeReferrer0 The referrer fee for token0
-/// @return feeReferrer1 The referrer fee for token1
-function getPoolReferrerFees(address pool) external view returns (uint8 feeReferrer0, uint8 feeReferrer1) {
-    uint8 fees = poolReferrerFees[pool];
-    feeReferrer0 = fees % 16;
-    feeReferrer1 = fees >> 4;
+/// @return feeSwapReferrer0 The swap referrer fee for token0
+/// @return feeSwapReferrer1 The swap referrer fee for token1
+function getPoolSwapReferrerFees(address pool) external view returns (uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) {
+    uint8 fees = poolSwapReferrerFees[pool];
+    feeSwapReferrer0 = fees % 16;
+    feeSwapReferrer1 = fees >> 4;
 }
 ```
 
@@ -164,12 +164,12 @@ function createPool(
     getPool[token0][token1][fee] = pool;
     getPool[token1][token0][fee] = pool;
     
-    // Set default referrer fee for the new pool
-    if (defaultReferrerFee > 0) {
-        poolReferrerFees[pool] = defaultReferrerFee;
-        uint8 feeReferrer0 = defaultReferrerFee % 16;
-        uint8 feeReferrer1 = defaultReferrerFee >> 4;
-        IUniswapV3Pool(pool).setFeeReferrer(feeReferrer0, feeReferrer1);
+    // Set default swap referrer fee for the new pool
+    if (defaultSwapReferrerFee > 0) {
+        poolSwapReferrerFees[pool] = defaultSwapReferrerFee;
+        uint8 feeSwapReferrer0 = defaultSwapReferrerFee % 16;
+        uint8 feeSwapReferrer1 = defaultSwapReferrerFee >> 4;
+        IUniswapV3Pool(pool).setFeeSwapReferrer(feeSwapReferrer0, feeSwapReferrer1);
     }
     
     emit PoolCreated(token0, token1, fee, tickSpacing, pool);
@@ -180,24 +180,24 @@ function createPool(
 
 #### Batch set referrer fees for multiple pools
 ```solidity
-/// @notice Sets referrer fees for multiple pools in a single transaction
+/// @notice Sets swap referrer fees for multiple pools in a single transaction
 /// @dev Can only be called by the factory owner
 /// @param pools Array of pool addresses
-/// @param feeReferrer0s Array of referrer fees for token0
-/// @param feeReferrer1s Array of referrer fees for token1
-function batchSetPoolReferrerFees(
+/// @param feeSwapReferrer0s Array of swap referrer fees for token0
+/// @param feeSwapReferrer1s Array of swap referrer fees for token1
+function batchSetPoolSwapReferrerFees(
     address[] calldata pools,
-    uint8[] calldata feeReferrer0s,
-    uint8[] calldata feeReferrer1s
+    uint8[] calldata feeSwapReferrer0s,
+    uint8[] calldata feeSwapReferrer1s
 ) external {
     require(msg.sender == owner, 'NOT_OWNER');
     require(
-        pools.length == feeReferrer0s.length && pools.length == feeReferrer1s.length,
+        pools.length == feeSwapReferrer0s.length && pools.length == feeSwapReferrer1s.length,
         'ARRAY_LENGTH_MISMATCH'
     );
     
     for (uint256 i = 0; i < pools.length; i++) {
-        setPoolReferrerFee(pools[i], feeReferrer0s[i], feeReferrer1s[i]);
+        setPoolSwapReferrerFee(pools[i], feeSwapReferrer0s[i], feeSwapReferrer1s[i]);
     }
 }
 ```
@@ -206,27 +206,27 @@ function batchSetPoolReferrerFees(
 
 #### Initialize referrer fees for existing pools
 ```solidity
-/// @notice Initializes referrer fees for existing pools
-/// @dev One-time function to set referrer fees for pools created before this upgrade
+/// @notice Initializes swap referrer fees for existing pools
+/// @dev One-time function to set swap referrer fees for pools created before this upgrade
 /// @param pools Array of existing pool addresses
-/// @param referrerFee The referrer fee to set for all pools
-function initializeExistingPoolReferrerFees(
+/// @param swapReferrerFee The swap referrer fee to set for all pools
+function initializeExistingPoolSwapReferrerFees(
     address[] calldata pools,
-    uint8 referrerFee
+    uint8 swapReferrerFee
 ) external {
     require(msg.sender == owner, 'NOT_OWNER');
-    require(referrerFee == 0 || (referrerFee >= 4 && referrerFee <= 20), 'INVALID_REFERRER_FEE');
+    require(swapReferrerFee == 0 || (swapReferrerFee >= 4 && swapReferrerFee <= 20), 'INVALID_SWAP_REFERRER_FEE');
     
     for (uint256 i = 0; i < pools.length; i++) {
         address pool = pools[i];
         require(pool != address(0), 'INVALID_POOL');
         
         // Only initialize if not already set
-        if (poolReferrerFees[pool] == 0) {
-            poolReferrerFees[pool] = referrerFee + (referrerFee << 4);
-            IUniswapV3Pool(pool).setFeeReferrer(referrerFee, referrerFee);
+        if (poolSwapReferrerFees[pool] == 0) {
+            poolSwapReferrerFees[pool] = swapReferrerFee + (swapReferrerFee << 4);
+            IUniswapV3Pool(pool).setFeeSwapReferrer(swapReferrerFee, swapReferrerFee);
             
-            emit PoolReferrerFeeSet(pool, 0, 0, referrerFee, referrerFee);
+            emit PoolSwapReferrerFeeSet(pool, 0, 0, swapReferrerFee, swapReferrerFee);
         }
     }
 }
@@ -240,23 +240,23 @@ function initializeExistingPoolReferrerFees(
 3. Update interface documentation
 
 ### Phase 2: Storage Implementation
-1. Add `poolReferrerFees` mapping
-2. Add `defaultReferrerFee` variable
+1. Add `poolSwapReferrerFees` mapping
+2. Add `defaultSwapReferrerFee` variable
 3. Update constructor if needed
 
 ### Phase 3: Core Functions
-1. Implement `setDefaultReferrerFee()`
-2. Implement `setPoolReferrerFee()`
-3. Implement `getPoolReferrerFees()` helper
+1. Implement `setDefaultSwapReferrerFee()`
+2. Implement `setPoolSwapReferrerFee()`
+3. Implement `getPoolSwapReferrerFees()` helper
 4. Add input validation and access control
 
 ### Phase 4: Pool Creation Integration
-1. Modify `createPool()` to set default referrer fees
+1. Modify `createPool()` to set default swap referrer fees
 2. Ensure proper initialization of new pools
 
 ### Phase 5: Batch Operations
-1. Implement `batchSetPoolReferrerFees()`
-2. Implement `initializeExistingPoolReferrerFees()`
+1. Implement `batchSetPoolSwapReferrerFees()`
+2. Implement `initializeExistingPoolSwapReferrerFees()`
 
 ### Phase 6: Testing and Validation
 1. Unit tests for all new functions
@@ -267,29 +267,29 @@ function initializeExistingPoolReferrerFees(
 ## Security Considerations
 
 ### 1. Access Control
-- Only factory owner can set referrer fees
+- Only factory owner can set swap referrer fees
 - Proper validation of owner permissions
 - Consider multi-sig requirements for production
 
 ### 2. Input Validation
-- Referrer fees must be 0 or between 4-20 (1/4 to 1/20 of swap fee)
+- Swap referrer fees must be 0 or between 4-20 (1/4 to 1/20 of swap fee)
 - Pool addresses must be valid
 - Array lengths must match for batch operations
 
 ### 3. State Management
-- Proper storage of referrer fee configurations
+- Proper storage of swap referrer fee configurations
 - Consistent state between factory and pools
 - Handle edge cases for uninitialized pools
 
 ### 4. Upgrade Safety
 - Backwards compatibility for existing pools
-- Safe migration path for fee configuration
+- Safe migration path for swap referrer fee configuration
 - Proper event emission for tracking changes
 
 ## Gas Optimization
 
 ### 1. Storage Efficiency
-- Pack referrer fees into single uint8 (4 bits each)
+- Pack swap referrer fees into single uint8 (4 bits each)
 - Use mappings for efficient lookups
 - Minimize storage operations
 
@@ -308,56 +308,56 @@ function initializeExistingPoolReferrerFees(
 ### Pool Interface Requirements
 The pool contract must implement:
 ```solidity
-function setFeeReferrer(uint8 feeReferrer0, uint8 feeReferrer1) external;
+function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external;
 ```
 
 ### Factory-Pool Communication
-- Factory calls pool's `setFeeReferrer()` during configuration
+- Factory calls pool's `setFeeSwapReferrer()` during configuration
 - Pool validates that caller is factory
 - Proper error handling for failed calls
 
 ## Configuration Examples
 
-### Example 1: Set 5% referrer fee (1/20 of swap fee)
+### Example 1: Set 5% swap referrer fee (1/20 of swap fee)
 ```solidity
-factory.setDefaultReferrerFee(20); // 1/20 = 5%
+factory.setDefaultSwapReferrerFee(20); // 1/20 = 5%
 ```
 
-### Example 2: Set different fees for token0 and token1
+### Example 2: Set different swap referrer fees for token0 and token1
 ```solidity
-factory.setPoolReferrerFee(poolAddress, 10, 20); // 1/10 and 1/20
+factory.setPoolSwapReferrerFee(poolAddress, 10, 20); // 1/10 and 1/20
 ```
 
-### Example 3: Disable referrer fees
+### Example 3: Disable swap referrer fees
 ```solidity
-factory.setPoolReferrerFee(poolAddress, 0, 0); // No referrer fees
+factory.setPoolSwapReferrerFee(poolAddress, 0, 0); // No swap referrer fees
 ```
 
 ## Backward Compatibility
 
-- Existing pools continue to work without referrer fees
-- New pools can be created with default referrer fees
+- Existing pools continue to work without swap referrer fees
+- New pools can be created with default swap referrer fees
 - Migration tools provided for existing pool upgrades
 - No breaking changes to existing interfaces
 
 ## Monitoring and Analytics
 
 ### Events for Tracking
-- `DefaultReferrerFeeChanged`: Track default fee changes
-- `PoolReferrerFeeSet`: Track individual pool configurations
+- `DefaultSwapReferrerFeeChanged`: Track default fee changes
+- `PoolSwapReferrerFeeSet`: Track individual pool configurations
 - Integration with existing pool events
 
 ### Query Functions
-- `poolReferrerFees()`: Get current pool configuration
-- `getPoolReferrerFees()`: Get breakdown of fees
-- `defaultReferrerFee()`: Get default configuration
+- `poolSwapReferrerFees()`: Get current pool configuration
+- `getPoolSwapReferrerFees()`: Get breakdown of fees
+- `defaultSwapReferrerFee()`: Get default configuration
 
 ## Conclusion
 
-This implementation plan provides a comprehensive approach to adding referrer fee management to the UniswapV3Factory contract. The design maintains consistency with existing protocol fee patterns while providing flexibility for different referrer fee configurations across pools.
+This implementation plan provides a comprehensive approach to adding swap referrer fee management to the UniswapV3Factory contract. The design maintains consistency with existing protocol fee patterns while providing flexibility for different swap referrer fee configurations across pools.
 
 The factory-based approach ensures:
-- Centralized management of referrer fees
+- Centralized management of swap referrer fees
 - Consistent configuration across pools
 - Easy migration and upgrade paths
 - Proper access control and validation

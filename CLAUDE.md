@@ -43,6 +43,7 @@ This is the **Uniswap V3 Core** repository containing the core smart contracts f
 - **Testing**: Waffle + Chai with gas snapshots
 - **Linting**: Solhint with Prettier
 - **Networks**: Configured for mainnet, testnets, and L2s (Arbitrum, Optimism, Polygon, BSC)
+- **Package Manager**: Uses yarn.lock (Yarn package manager)
 
 ## Key Contracts
 
@@ -90,10 +91,10 @@ This is the **Uniswap V3 Core** repository containing the core smart contracts f
 
 ## Network Configuration
 The project is configured for deployment on:
-- Ethereum mainnet and testnets
-- Arbitrum (mainnet and testnet)
-- Optimism (mainnet and testnet)
-- Polygon (mainnet and Mumbai)
+- Ethereum mainnet and testnets (Ropsten, Rinkeby, Goerli, Kovan)
+- Arbitrum (mainnet and Rinkeby testnet)
+- Optimism (mainnet and Kovan testnet)
+- Polygon (mainnet and Mumbai testnet)
 - BSC mainnet
 
 ## Important Notes
@@ -103,65 +104,65 @@ The project is configured for deployment on:
 - Mathematical precision is essential for protocol security
 - Follow the existing code style and patterns strictly
 
-## Referrer Fee Implementation Plans
+## Swap Referrer Fee Implementation Plans
 
 ### Implementation Documentation
-This repository contains comprehensive implementation plans for adding referrer fee functionality to the Uniswap V3 protocol:
+This repository contains comprehensive implementation plans for adding swap referrer fee functionality to the Uniswap V3 protocol:
 
-- **`referrer-fee-implementation-plan.md`** - Complete plan for adding referrer fees to UniswapV3Pool contract
-- **`factory-referrer-fee-implementation-plan.md`** - Plan for factory-level referrer fee management
+- **`referrer-fee-implementation-plan.md`** - Complete plan for adding swap referrer fees to UniswapV3Pool contract
+- **`factory-referrer-fee-implementation-plan.md`** - Plan for factory-level swap referrer fee management
 - **`factory-router-whitelist-implementation-plan.md`** - Plan for router whitelist in factory
-- **`swaprouter-referrer-implementation-plan.md`** - Plan for SwapRouter referrer integration
+- **`swaprouter-referrer-implementation-plan.md`** - Plan for SwapRouter swap referrer integration
 
-### Referrer Fee System Architecture
-The planned referrer fee system consists of four main components:
+### Swap Referrer Fee System Architecture
+The planned swap referrer fee system consists of four main components:
 
-#### 1. Pool-Level Referrer Fees (`UniswapV3Pool.sol`)
+#### 1. Pool-Level Swap Referrer Fees (`UniswapV3Pool.sol`)
 - **Fee Structure**: Similar to protocol fees with separate rates for token0 and token1
-- **Storage**: `feeReferrer` in Slot0 struct (packed with other fee data)
-- **Direct Transfer**: Referrer fees sent directly to referrer during swap (gas efficient)
-- **Swap Integration**: Modified `swap()` function accepts referrer parameter from router
-- **Access Control**: Only factory owner can set referrer fee rates via `setFeeReferrer()`
+- **Storage**: `feeSwapReferrer` in Slot0 struct (packed with other fee data)
+- **Direct Transfer**: Swap referrer fees sent directly to swap referrer during swap (gas efficient)
+- **Swap Integration**: Modified `swap()` function accepts swapReferrer parameter from router
+- **Access Control**: Only factory owner can set swap referrer fee rates via `setFeeSwapReferrer()`
 
 #### 2. Factory-Level Fee Management (`UniswapV3Factory.sol`)
-- **Default Configuration**: `defaultReferrerFee` for newly created pools
-- **Per-Pool Configuration**: `poolReferrerFees` mapping for individual pool settings
-- **Management Functions**: `setDefaultReferrerFee()`, `setPoolReferrerFee()`, batch operations
-- **Pool Integration**: Automatically configures new pools with default referrer fees
-- **Access Control**: Only factory owner can modify referrer fee configurations
+- **Default Configuration**: `defaultSwapReferrerFee` for newly created pools
+- **Per-Pool Configuration**: `poolSwapReferrerFees` mapping for individual pool settings
+- **Management Functions**: `setDefaultSwapReferrerFee()`, `setPoolSwapReferrerFee()`, batch operations
+- **Pool Integration**: Automatically configures new pools with default swap referrer fees
+- **Access Control**: Only factory owner can modify swap referrer fee configurations
 
 #### 3. Router Whitelist System (`UniswapV3Factory.sol`)
 - **Whitelist Storage**: `whitelistedRouters` mapping for approved routers
 - **Enumeration Support**: `whitelistedRoutersList` array for governance queries
 - **Management Functions**: Add/remove routers individually or in batches
-- **Pool Validation**: Pools verify router whitelist before processing referrer fees
+- **Pool Validation**: Pools verify router whitelist before processing swap referrer fees
 - **Emergency Controls**: Quick removal and pause functionality for security
 
 #### 4. SwapRouter Integration (`SwapRouter.sol` - Periphery)
-- **Global Referrer**: Single referrer address for all swaps through the router
+- **Global Swap Referrer**: Single swap referrer address for all swaps through the router
 - **Owner Management**: Uses OpenZeppelin Ownable for standardized ownership
-- **Referrer Configuration**: `setReferrer()` function for owner-only updates
-- **Swap Integration**: All swap functions pass referrer to pool contracts
-- **Access Control**: Only router owner can change referrer address
+- **Swap Referrer Configuration**: `setSwapReferrer()` function for owner-only updates
+- **Swap Integration**: All swap functions pass swapReferrer to pool contracts
+- **Access Control**: Only router owner can change swap referrer address
 
 ### Key Design Decisions
 
 #### Fee Calculation Hierarchy
 1. **Protocol Fee**: Extracted first from swap fees
-2. **Referrer Fee**: Extracted from remaining fees after protocol fee
+2. **Swap Referrer Fee**: Extracted from remaining fees after protocol fee
 3. **LP Fee**: Remainder distributed to liquidity providers
 
 #### Security Model
-- **Factory Owner**: Controls referrer fee rates and router whitelist
-- **Router Owner**: Controls referrer address for their router
-- **Pool Validation**: Only whitelisted routers can claim referrer fees
+- **Factory Owner**: Controls swap referrer fee rates and router whitelist
+- **Router Owner**: Controls swap referrer address for their router
+- **Pool Validation**: Only whitelisted routers can claim swap referrer fees
 - **Direct Transfer**: Immediate fee settlement for gas efficiency
 
 #### Gas Optimization
 - **Direct Transfer**: ~2,000 gas savings vs accumulate-then-collect pattern
-- **Packed Storage**: Referrer fees packed in existing Slot0 structure
+- **Packed Storage**: Swap referrer fees packed in existing Slot0 structure
 - **Efficient Validation**: O(1) router whitelist lookups
-- **Minimal Overhead**: ~3% gas increase for swaps with referrer
+- **Minimal Overhead**: ~3% gas increase for swaps with swap referrer
 
 ### Implementation Status
 - **Planning Phase**: Comprehensive implementation plans completed
@@ -171,14 +172,14 @@ The planned referrer fee system consists of four main components:
 
 ### Security Considerations
 - **Access Control**: Multi-layer security with factory owner, router owner, and pool validation
-- **Router Whitelisting**: Prevents malicious routers from claiming referrer fees
+- **Router Whitelisting**: Prevents malicious routers from claiming swap referrer fees
 - **Emergency Procedures**: Quick response mechanisms for security incidents
 - **Audit Requirements**: All changes require security review before deployment
 
-### Development Guidelines for Referrer Fees
+### Development Guidelines for Swap Referrer Fees
 - Follow existing protocol fee patterns for consistency
 - Use OpenZeppelin contracts for standard functionality (Ownable)
 - Implement comprehensive test coverage for all fee scenarios
-- Maintain gas efficiency - referrer fees should not significantly impact swap costs
+- Maintain gas efficiency - swap referrer fees should not significantly impact swap costs
 - Ensure proper event emission for monitoring and analytics
 - Consider upgrade paths and backwards compatibility

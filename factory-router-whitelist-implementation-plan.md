@@ -6,16 +6,16 @@ This document outlines the implementation plan for adding router whitelist funct
 ## Purpose and Benefits
 
 ### Why Factory Should Track Routers
-1. **Security**: Prevent malicious routers from calling pools with referrer fees
-2. **Quality Control**: Ensure only trusted routers can benefit from referrer fees
+1. **Security**: Prevent malicious routers from calling pools with swap referrer fees
+2. **Quality Control**: Ensure only trusted routers can benefit from swap referrer fees
 3. **Governance**: Allow protocol governance to manage router ecosystem
-4. **Fee Protection**: Prevent referrer fee abuse by unauthorized contracts
+4. **Fee Protection**: Prevent swap referrer fee abuse by unauthorized contracts
 5. **Upgrade Management**: Control which router versions are approved
 
 ### Use Cases
-- **Referrer Fee Security**: Only whitelisted routers can set referrer addresses
+- **Swap Referrer Fee Security**: Only whitelisted routers can set swap referrer addresses
 - **Router Versioning**: Deprecate old routers while maintaining compatibility
-- **Partnership Management**: Approve third-party routers for referrer fees
+- **Partnership Management**: Approve third-party routers for swap referrer fees
 - **Emergency Response**: Quickly remove compromised routers from whitelist
 
 ## Current Factory Structure Analysis
@@ -305,16 +305,16 @@ function swap(
     bool zeroForOne,
     int256 amountSpecified,
     uint160 sqrtPriceLimitX96,
-    address referrer,
+    address swapReferrer,
     bytes calldata data
 ) external override noDelegateCall onlyWhitelistedRouter returns (int256 amount0, int256 amount1) {
     require(amountSpecified != 0, 'AS');
     
-    // ... rest of swap logic with referrer fee processing
+    // ... rest of swap logic with swap referrer fee processing
 }
 ```
 
-#### Alternative: Conditional referrer fee processing
+#### Alternative: Conditional swap referrer fee processing
 ```solidity
 /// @inheritdoc IUniswapV3PoolActions
 function swap(
@@ -322,17 +322,17 @@ function swap(
     bool zeroForOne,
     int256 amountSpecified,
     uint160 sqrtPriceLimitX96,
-    address referrer,
+    address swapReferrer,
     bytes calldata data
 ) external override noDelegateCall returns (int256 amount0, int256 amount1) {
     require(amountSpecified != 0, 'AS');
     
-    // Only process referrer fees if called from whitelisted router
-    address effectiveReferrer = IUniswapV3Factory(factory).whitelistedRouters(msg.sender) 
-        ? referrer 
+    // Only process swap referrer fees if called from whitelisted router
+    address effectiveSwapReferrer = IUniswapV3Factory(factory).whitelistedRouters(msg.sender) 
+        ? swapReferrer 
         : address(0);
     
-    // ... rest of swap logic using effectiveReferrer
+    // ... rest of swap logic using effectiveSwapReferrer
 }
 ```
 
@@ -348,8 +348,8 @@ function deployAndRegisterRouter() external {
     // Register with factory
     IUniswapV3Factory(factory).addRouterToWhitelist(address(router));
     
-    // Set initial referrer
-    router.setReferrer(INITIAL_REFERRER);
+    // Set initial swap referrer
+    router.setSwapReferrer(INITIAL_SWAP_REFERRER);
 }
 ```
 
@@ -384,7 +384,7 @@ All router whitelist functions are protected by the `require(msg.sender == owner
 - `getAllWhitelistedRouters()` - Public view
 
 #### Additional Security Features
-- Pool validation prevents unauthorized referrer fee claims
+- Pool validation prevents unauthorized swap referrer fee claims
 - Proper event emission for transparency and monitoring
 - Emergency procedures for rapid response to threats
 
@@ -451,7 +451,7 @@ function unpauseWhitelist() external {
 #### Integration Tests
 - Test pool-factory integration
 - Test router validation in pools
-- Test referrer fee processing with whitelist
+- Test swap referrer fee processing with whitelist
 - Test emergency procedures
 
 #### Gas Analysis
@@ -491,7 +491,7 @@ function unpauseWhitelist() external {
 ### 13. Alternative Implementations
 
 #### Option 1: Strict Validation (Recommended)
-- All referrer fee processing requires whitelisted router
+- All swap referrer fee processing requires whitelisted router
 - Maximum security and control
 - May require router updates for compliance
 
@@ -554,7 +554,7 @@ function proposeRouterWhitelisting(
 
 ## Benefits of This Implementation
 
-1. **Enhanced Security**: Prevents unauthorized referrer fee claims
+1. **Enhanced Security**: Prevents unauthorized swap referrer fee claims
 2. **Quality Control**: Ensures only approved routers can participate
 3. **Flexible Management**: Easy to add/remove routers as needed
 4. **Emergency Response**: Quick removal of compromised routers
