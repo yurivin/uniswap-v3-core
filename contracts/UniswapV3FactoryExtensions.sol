@@ -93,4 +93,10 @@ contract UniswapV3FactoryExtensions is IUniswapV3FactoryExtensions {
         
         emit PoolSwapReferrerFeeSet(pool, feeSwapReferrer0Old, feeSwapReferrer1Old, feeSwapReferrer0, feeSwapReferrer1);
     }
+
+    /// @inheritdoc IUniswapV3FactoryExtensions
+    function setOwnerViaWrapper(address _owner, address _caller) external override {
+        require(msg.sender == wrapper, 'Only wrapper');
+        IUniswapV3FactoryCore(factoryCore).setOwnerAuthorized(_owner, _caller);
+    }
 }

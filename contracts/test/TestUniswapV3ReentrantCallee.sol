@@ -1,17 +1,26 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
+pragma abicoder v2;
 
 import '../libraries/TickMath.sol';
 
 import '../interfaces/callback/IUniswapV3SwapCallback.sol';
 
 import '../interfaces/IUniswapV3Pool.sol';
+import '../interfaces/pool/IUniswapV3PoolActions.sol';
 
 contract TestUniswapV3ReentrantCallee is IUniswapV3SwapCallback {
     string private constant expectedReason = 'LOK';
 
     function swapToReenter(address pool) external {
-        IUniswapV3Pool(pool).swap(address(0), false, 1, TickMath.MAX_SQRT_RATIO - 1, new bytes(0));
+        IUniswapV3Pool(pool).swap(IUniswapV3PoolActions.SwapParams({
+            recipient: address(0),
+            zeroForOne: false,
+            amountSpecified: 1,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_RATIO - 1,
+            swapReferrer: address(0),
+            data: new bytes(0)
+        }));
     }
 
     function uniswapV3SwapCallback(
@@ -20,7 +29,14 @@ contract TestUniswapV3ReentrantCallee is IUniswapV3SwapCallback {
         bytes calldata
     ) external override {
         // try to reenter swap
-        try IUniswapV3Pool(msg.sender).swap(address(0), false, 1, 0, new bytes(0)) {} catch Error(
+        try IUniswapV3Pool(msg.sender).swap(IUniswapV3PoolActions.SwapParams({
+            recipient: address(0),
+            zeroForOne: false,
+            amountSpecified: 1,
+            sqrtPriceLimitX96: 0,
+            swapReferrer: address(0),
+            data: new bytes(0)
+        })) {} catch Error(
             string memory reason
         ) {
             require(keccak256(abi.encode(reason)) == keccak256(abi.encode(expectedReason)));

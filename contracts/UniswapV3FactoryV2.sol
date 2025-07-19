@@ -51,7 +51,7 @@ contract UniswapV3FactoryV2 is IUniswapV3Factory {
 
     /// @inheritdoc IUniswapV3Factory
     function setOwner(address _owner) external override {
-        factoryCore.setOwner(_owner);
+        factoryExtensions.setOwnerViaWrapper(_owner, msg.sender);
     }
 
     /// @inheritdoc IUniswapV3Factory
@@ -68,11 +68,13 @@ contract UniswapV3FactoryV2 is IUniswapV3Factory {
     function addRouterToWhitelist(address router) external override {
         require(msg.sender == factoryCore.owner());
         factoryExtensions.addRouterToWhitelist(router);
+        emit RouterWhitelisted(router, msg.sender);
     }
 
     /// @inheritdoc IUniswapV3Factory
     function removeRouterFromWhitelist(address router) external override {
         require(msg.sender == factoryCore.owner());
         factoryExtensions.removeRouterFromWhitelist(router);
+        emit RouterRemovedFromWhitelist(router, msg.sender);
     }
 }

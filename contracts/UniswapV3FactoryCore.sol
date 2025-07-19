@@ -65,6 +65,15 @@ contract UniswapV3FactoryCore is IUniswapV3FactoryCore, UniswapV3PoolDeployer, N
         emit OwnerChanged(owner, _owner);
         owner = _owner;
     }
+    
+    /// @notice Set the owner via authorized contracts (extensions, wrapper)
+    /// @param _owner The new owner address
+    /// @param _caller The original caller who initiated this change
+    function setOwnerAuthorized(address _owner, address _caller) external override onlyAuthorized {
+        require(_caller == owner);
+        emit OwnerChanged(owner, _owner);
+        owner = _owner;
+    }
 
     /// @inheritdoc IUniswapV3FactoryCore
     function setExtensions(address _extensions) external override {

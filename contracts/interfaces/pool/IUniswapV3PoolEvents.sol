@@ -112,6 +112,13 @@ interface IUniswapV3PoolEvents {
     /// @param feeProtocol1New The updated value of the token1 protocol fee
     event SetFeeProtocol(uint8 feeProtocol0Old, uint8 feeProtocol1Old, uint8 feeProtocol0New, uint8 feeProtocol1New);
 
+    /// @notice Emitted when the swap referrer fee is changed by the pool
+    /// @param feeSwapReferrer0Old The previous value of the token0 swap referrer fee
+    /// @param feeSwapReferrer1Old The previous value of the token1 swap referrer fee
+    /// @param feeSwapReferrer0New The updated value of the token0 swap referrer fee
+    /// @param feeSwapReferrer1New The updated value of the token1 swap referrer fee
+    event SetFeeSwapReferrer(uint8 feeSwapReferrer0Old, uint8 feeSwapReferrer1Old, uint8 feeSwapReferrer0New, uint8 feeSwapReferrer1New);
+
     /// @notice Emitted when the collected protocol fees are withdrawn by the factory owner
     /// @param sender The address that collects the protocol fees
     /// @param recipient The address that receives the collected protocol fees

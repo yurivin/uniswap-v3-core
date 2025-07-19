@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
+pragma abicoder v2;
 
 import '../libraries/SafeCast.sol';
 import '../libraries/TickMath.sol';
@@ -7,6 +8,7 @@ import '../libraries/TickMath.sol';
 import '../interfaces/IERC20Minimal.sol';
 import '../interfaces/callback/IUniswapV3SwapCallback.sol';
 import '../interfaces/IUniswapV3Pool.sol';
+import '../interfaces/pool/IUniswapV3PoolActions.sol';
 
 contract TestUniswapV3Router is IUniswapV3SwapCallback {
     using SafeCast for uint256;
@@ -20,13 +22,14 @@ contract TestUniswapV3Router is IUniswapV3SwapCallback {
     ) external {
         address[] memory pools = new address[](1);
         pools[0] = poolInput;
-        IUniswapV3Pool(poolOutput).swap(
-            recipient,
-            false,
-            -amount0Out.toInt256(),
-            TickMath.MAX_SQRT_RATIO - 1,
-            abi.encode(pools, msg.sender)
-        );
+        IUniswapV3Pool(poolOutput).swap(IUniswapV3PoolActions.SwapParams({
+            recipient: recipient,
+            zeroForOne: false,
+            amountSpecified: -amount0Out.toInt256(),
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_RATIO - 1,
+            swapReferrer: address(0),
+            data: abi.encode(pools, msg.sender)
+        }));
     }
 
     // flash swaps for an exact amount of token1 in the output pool
@@ -38,13 +41,14 @@ contract TestUniswapV3Router is IUniswapV3SwapCallback {
     ) external {
         address[] memory pools = new address[](1);
         pools[0] = poolInput;
-        IUniswapV3Pool(poolOutput).swap(
-            recipient,
-            true,
-            -amount1Out.toInt256(),
-            TickMath.MIN_SQRT_RATIO + 1,
-            abi.encode(pools, msg.sender)
-        );
+        IUniswapV3Pool(poolOutput).swap(IUniswapV3PoolActions.SwapParams({
+            recipient: recipient,
+            zeroForOne: true,
+            amountSpecified: -amount1Out.toInt256(),
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_RATIO + 1,
+            swapReferrer: address(0),
+            data: abi.encode(pools, msg.sender)
+        }));
     }
 
     event SwapCallback(int256 amount0Delta, int256 amount1Delta);
@@ -65,13 +69,14 @@ contract TestUniswapV3Router is IUniswapV3SwapCallback {
             int256 amountToBePaid = amount0Delta > 0 ? amount0Delta : amount1Delta;
 
             bool zeroForOne = tokenToBePaid == IUniswapV3Pool(pools[0]).token1();
-            IUniswapV3Pool(pools[0]).swap(
-                msg.sender,
-                zeroForOne,
-                -amountToBePaid,
-                zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1,
-                abi.encode(new address[](0), payer)
-            );
+            IUniswapV3Pool(pools[0]).swap(IUniswapV3PoolActions.SwapParams({
+                recipient: msg.sender,
+                zeroForOne: zeroForOne,
+                amountSpecified: -amountToBePaid,
+                sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1,
+                swapReferrer: address(0),
+                data: abi.encode(new address[](0), payer)
+            }));
         } else {
             if (amount0Delta > 0) {
                 IERC20Minimal(IUniswapV3Pool(msg.sender).token0()).transferFrom(

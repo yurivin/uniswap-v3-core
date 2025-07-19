@@ -18,8 +18,23 @@ describe('RouterWhitelist', () => {
     router2 = ethers.Wallet.createRandom().address
     router3 = ethers.Wallet.createRandom().address
     
-    const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-    factory = await factoryFactory.deploy()
+    // Deploy Core
+    const factoryCoreFactory = await ethers.getContractFactory('UniswapV3FactoryCore')
+    const core = await factoryCoreFactory.deploy()
+
+    // Deploy Extensions
+    const factoryExtensionsFactory = await ethers.getContractFactory('UniswapV3FactoryExtensions')
+    const extensions = await factoryExtensionsFactory.deploy(core.address)
+
+    // Set extensions in core
+    await core.setExtensions(extensions.address)
+
+    // Deploy V2 wrapper
+    const factoryV2Factory = await ethers.getContractFactory('UniswapV3FactoryV2')
+    factory = await factoryV2Factory.deploy(core.address, extensions.address)
+
+    // Set wrapper in extensions
+    await extensions.setWrapper(factory.address)
   })
 
   describe('addRouterToWhitelist', () => {

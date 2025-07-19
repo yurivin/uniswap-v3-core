@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
+pragma abicoder v2;
 
 import '../interfaces/IERC20Minimal.sol';
 
 import '../interfaces/callback/IUniswapV3SwapCallback.sol';
 import '../interfaces/IUniswapV3Pool.sol';
+import '../interfaces/pool/IUniswapV3PoolActions.sol';
 
 contract UniswapV3PoolSwapTest is IUniswapV3SwapCallback {
     int256 private _amount0Delta;
@@ -23,15 +25,16 @@ contract UniswapV3PoolSwapTest is IUniswapV3SwapCallback {
             uint160 nextSqrtRatio
         )
     {
-        (amount0Delta, amount1Delta) = IUniswapV3Pool(pool).swap(
-            address(0),
-            zeroForOne,
-            amountSpecified,
-            sqrtPriceLimitX96,
-            abi.encode(msg.sender)
-        );
+        (amount0Delta, amount1Delta) = IUniswapV3Pool(pool).swap(IUniswapV3PoolActions.SwapParams({
+            recipient: address(0),
+            zeroForOne: zeroForOne,
+            amountSpecified: amountSpecified,
+            sqrtPriceLimitX96: sqrtPriceLimitX96,
+            swapReferrer: address(0),
+            data: abi.encode(msg.sender)
+        }));
 
-        (nextSqrtRatio, , , , , , ) = IUniswapV3Pool(pool).slot0();
+        (nextSqrtRatio, , , , , , , ) = IUniswapV3Pool(pool).slot0();
     }
 
     function uniswapV3SwapCallback(

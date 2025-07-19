@@ -20,4 +20,9 @@ interface IUniswapV3PoolOwnerActions {
         uint128 amount0Requested,
         uint128 amount1Requested
     ) external returns (uint128 amount0, uint128 amount1);
+
+    /// @notice Set the denominator of the swap referrer's % share of the fees
+    /// @param feeSwapReferrer0 new swap referrer fee for token0 of the pool
+    /// @param feeSwapReferrer1 new swap referrer fee for token1 of the pool
+    function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external;
 }

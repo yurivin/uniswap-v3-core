@@ -3,7 +3,10 @@ pragma abicoder v2;
 
 import '../../../../../contracts/test/TestERC20.sol';
 import '../../../../../contracts/UniswapV3Pool.sol';
-import '../../../../../contracts/UniswapV3Factory.sol';
+import '../../../../../contracts/interfaces/pool/IUniswapV3PoolActions.sol';
+import '../../../../../contracts/UniswapV3FactoryV2.sol';
+import '../../../../../contracts/UniswapV3FactoryCore.sol';
+import '../../../../../contracts/UniswapV3FactoryExtensions.sol';
 
 contract SetupToken {
     TestERC20 public token;
@@ -62,10 +65,24 @@ contract SetupUniswap {
     // fee 500   + tickSpacing 10
     // fee 3000  + tickSpacing 60
     // fee 10000 + tickSpacing 200
-    UniswapV3Factory factory;
+    UniswapV3FactoryV2 factory;
 
     constructor(TestERC20 _token0, TestERC20 _token1) public {
-        factory = new UniswapV3Factory();
+        // Deploy Core
+        UniswapV3FactoryCore core = new UniswapV3FactoryCore();
+        
+        // Deploy Extensions
+        UniswapV3FactoryExtensions extensions = new UniswapV3FactoryExtensions(address(core));
+        
+        // Set extensions in core
+        core.setExtensions(address(extensions));
+        
+        // Deploy V2 wrapper
+        factory = new UniswapV3FactoryV2(address(core), address(extensions));
+        
+        // Set wrapper in extensions
+        extensions.setWrapper(address(factory));
+        
         token0 = _token0;
         token1 = _token1;
     }
@@ -199,7 +216,14 @@ contract UniswapSwapper {
         uint160 _sqrtPriceLimitX96
     ) public returns (SwapperStats memory bfre, SwapperStats memory aftr) {
         bfre = getStats();
-        pool.swap(address(this), _zeroForOne, _amountSpecified, _sqrtPriceLimitX96, new bytes(0));
+        pool.swap(IUniswapV3PoolActions.SwapParams({
+            recipient: address(this),
+            zeroForOne: _zeroForOne,
+            amountSpecified: _amountSpecified,
+            sqrtPriceLimitX96: _sqrtPriceLimitX96,
+            swapReferrer: address(0),
+            data: new bytes(0)
+        }));
         aftr = getStats();
     }
 }

@@ -5,8 +5,24 @@ import { Contract } from 'ethers'
 describe('Factory Deployment Test', () => {
   it('should deploy factory with router whitelist functionality', async () => {
     const [wallet] = await ethers.getSigners()
-    const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-    const factory: Contract = await factoryFactory.deploy()
+    
+    // Deploy Core
+    const factoryCoreFactory = await ethers.getContractFactory('UniswapV3FactoryCore')
+    const core = await factoryCoreFactory.deploy()
+
+    // Deploy Extensions
+    const factoryExtensionsFactory = await ethers.getContractFactory('UniswapV3FactoryExtensions')
+    const extensions = await factoryExtensionsFactory.deploy(core.address)
+
+    // Set extensions in core
+    await core.setExtensions(extensions.address)
+
+    // Deploy V2 wrapper
+    const factoryV2Factory = await ethers.getContractFactory('UniswapV3FactoryV2')
+    const factory: Contract = await factoryV2Factory.deploy(core.address, extensions.address)
+
+    // Set wrapper in extensions
+    await extensions.setWrapper(factory.address)
     
     // Test basic factory functionality
     expect(await factory.owner()).to.equal(wallet.address)
@@ -30,8 +46,24 @@ describe('Factory Deployment Test', () => {
   
   it('should maintain existing factory functionality', async () => {
     const [wallet] = await ethers.getSigners()
-    const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-    const factory: Contract = await factoryFactory.deploy()
+    
+    // Deploy Core
+    const factoryCoreFactory = await ethers.getContractFactory('UniswapV3FactoryCore')
+    const core = await factoryCoreFactory.deploy()
+
+    // Deploy Extensions
+    const factoryExtensionsFactory = await ethers.getContractFactory('UniswapV3FactoryExtensions')
+    const extensions = await factoryExtensionsFactory.deploy(core.address)
+
+    // Set extensions in core
+    await core.setExtensions(extensions.address)
+
+    // Deploy V2 wrapper
+    const factoryV2Factory = await ethers.getContractFactory('UniswapV3FactoryV2')
+    const factory: Contract = await factoryV2Factory.deploy(core.address, extensions.address)
+
+    // Set wrapper in extensions
+    await extensions.setWrapper(factory.address)
     
     // Test existing functionality still works
     expect(await factory.owner()).to.equal(wallet.address)

@@ -89,4 +89,10 @@ interface IUniswapV3FactoryCore {
     /// @param fee The fee amount to enable, denominated in hundredths of a bip (i.e. 1e-6)
     /// @param tickSpacing The spacing between ticks to be enforced for all pools created with the given fee amount
     function enableFeeAmount(uint24 fee, int24 tickSpacing) external;
+
+    /// @notice Updates the owner via authorized contracts (extensions, wrapper)
+    /// @dev Must be called by authorized contract with original caller validation
+    /// @param _owner The new owner of the factory
+    /// @param _caller The original caller who initiated this change
+    function setOwnerAuthorized(address _owner, address _caller) external;
 }

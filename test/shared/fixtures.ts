@@ -2,7 +2,9 @@ import { BigNumber } from 'ethers'
 import { ethers } from 'hardhat'
 import { MockTimeUniswapV3Pool } from '../../typechain/MockTimeUniswapV3Pool'
 import { TestERC20 } from '../../typechain/TestERC20'
-import { UniswapV3Factory } from '../../typechain/UniswapV3Factory'
+import { UniswapV3FactoryV2 } from '../../typechain/UniswapV3FactoryV2'
+import { UniswapV3FactoryCore } from '../../typechain/UniswapV3FactoryCore'
+import { UniswapV3FactoryExtensions } from '../../typechain/UniswapV3FactoryExtensions'
 import { TestUniswapV3Callee } from '../../typechain/TestUniswapV3Callee'
 import { TestUniswapV3Router } from '../../typechain/TestUniswapV3Router'
 import { MockTimeUniswapV3PoolDeployer } from '../../typechain/MockTimeUniswapV3PoolDeployer'
@@ -10,12 +12,28 @@ import { MockTimeUniswapV3PoolDeployer } from '../../typechain/MockTimeUniswapV3
 import { Fixture } from 'ethereum-waffle'
 
 interface FactoryFixture {
-  factory: UniswapV3Factory
+  factory: UniswapV3FactoryV2
 }
 
 async function factoryFixture(): Promise<FactoryFixture> {
-  const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-  const factory = (await factoryFactory.deploy()) as UniswapV3Factory
+  // Deploy Core
+  const factoryCoreFactory = await ethers.getContractFactory('UniswapV3FactoryCore')
+  const core = (await factoryCoreFactory.deploy()) as UniswapV3FactoryCore
+
+  // Deploy Extensions
+  const factoryExtensionsFactory = await ethers.getContractFactory('UniswapV3FactoryExtensions')
+  const extensions = (await factoryExtensionsFactory.deploy(core.address)) as UniswapV3FactoryExtensions
+
+  // Set extensions in core
+  await core.setExtensions(extensions.address)
+
+  // Deploy V2 wrapper
+  const factoryV2Factory = await ethers.getContractFactory('UniswapV3FactoryV2')
+  const factory = (await factoryV2Factory.deploy(core.address, extensions.address)) as UniswapV3FactoryV2
+
+  // Set wrapper in extensions
+  await extensions.setWrapper(factory.address)
+
   return { factory }
 }
 

@@ -1,5 +1,8 @@
 import { ethers, waffle } from 'hardhat'
-import { UniswapV3Factory } from '../typechain/UniswapV3Factory'
+import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
+import { UniswapV3FactoryV2 } from '../typechain/UniswapV3FactoryV2'
+import { UniswapV3FactoryCore } from '../typechain/UniswapV3FactoryCore'
+import { UniswapV3FactoryExtensions } from '../typechain/UniswapV3FactoryExtensions'
 import { expect } from './shared/expect'
 import snapshotGasCost from './shared/snapshotGasCost'
 
@@ -17,11 +20,28 @@ const createFixtureLoader = waffle.createFixtureLoader
 describe('UniswapV3Factory', () => {
   let wallet: SignerWithAddress, other: SignerWithAddress
 
-  let factory: UniswapV3Factory
+  let factory: UniswapV3FactoryV2
   let poolBytecode: string
   const fixture = async () => {
-    const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-    return (await factoryFactory.deploy()) as unknown as UniswapV3Factory
+    // Deploy Core
+    const factoryCoreFactory = await ethers.getContractFactory('UniswapV3FactoryCore')
+    const core = (await factoryCoreFactory.deploy()) as unknown as UniswapV3FactoryCore
+
+    // Deploy Extensions
+    const factoryExtensionsFactory = await ethers.getContractFactory('UniswapV3FactoryExtensions')
+    const extensions = (await factoryExtensionsFactory.deploy(core.address)) as unknown as UniswapV3FactoryExtensions
+
+    // Set extensions in core
+    await core.setExtensions(extensions.address)
+
+    // Deploy V2 wrapper
+    const factoryV2Factory = await ethers.getContractFactory('UniswapV3FactoryV2')
+    const factory = (await factoryV2Factory.deploy(core.address, extensions.address)) as unknown as UniswapV3FactoryV2
+
+    // Set wrapper in extensions
+    await extensions.setWrapper(factory.address)
+
+    return factory
   }
 
   let loadFixture: ReturnType<typeof createFixtureLoader>

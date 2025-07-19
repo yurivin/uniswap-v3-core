@@ -72,4 +72,10 @@ interface IUniswapV3FactoryExtensions {
     /// @param feeSwapReferrer0 The swap referrer fee for token0 (0 or 4-20)
     /// @param feeSwapReferrer1 The swap referrer fee for token1 (0 or 4-20)
     function setPoolSwapReferrerFee(address pool, uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external;
+
+    /// @notice Updates the factory owner via wrapper delegation
+    /// @dev Can only be called by authorized wrapper with original caller validation
+    /// @param _owner The new owner of the factory
+    /// @param _caller The original caller who initiated this change
+    function setOwnerViaWrapper(address _owner, address _caller) external;
 }

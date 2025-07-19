@@ -100,7 +100,7 @@ These functions are already implemented in OpenZeppelin's Ownable contract with 
 
 ### 5. Modified Pool Swap Calls
 
-#### Update pool swap calls to include referrer
+#### Update pool swap calls to use SwapParams struct
 ```solidity
 // OLD: Current pool swap call
 IUniswapV3Pool(pool).swap(
@@ -111,14 +111,16 @@ IUniswapV3Pool(pool).swap(
     abi.encode(msg.sender)
 );
 
-// NEW: Pool swap call with referrer
+// NEW: Pool swap call with SwapParams struct
 IUniswapV3Pool(pool).swap(
-    recipient,
-    zeroForOne,
-    amountSpecified,
-    sqrtPriceLimitX96,
-    referrer,              // Pass referrer address
-    abi.encode(msg.sender)
+    IUniswapV3PoolActions.SwapParams({
+        recipient: recipient,
+        zeroForOne: zeroForOne,
+        amountSpecified: amountSpecified,
+        sqrtPriceLimitX96: sqrtPriceLimitX96,
+        swapReferrer: referrer,
+        data: abi.encode(msg.sender)
+    })
 );
 ```
 
@@ -142,16 +144,18 @@ function exactInputSingle(ExactInputSingleParams calldata params)
         PoolAddress.getPoolKey(params.tokenIn, params.tokenOut, params.fee)
     );
     
-    // Perform swap with referrer
+    // Perform swap with referrer using SwapParams struct
     (int256 amount0, int256 amount1) = IUniswapV3Pool(pool).swap(
-        params.recipient,
-        zeroForOne,
-        params.amountIn.toInt256(),
-        params.sqrtPriceLimitX96 == 0
-            ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
-            : params.sqrtPriceLimitX96,
-        referrer,  // Pass referrer address
-        abi.encode(SwapCallbackData({tokenIn: params.tokenIn, tokenOut: params.tokenOut, fee: params.fee, payer: msg.sender}))
+        IUniswapV3PoolActions.SwapParams({
+            recipient: params.recipient,
+            zeroForOne: zeroForOne,
+            amountSpecified: params.amountIn.toInt256(),
+            sqrtPriceLimitX96: params.sqrtPriceLimitX96 == 0
+                ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                : params.sqrtPriceLimitX96,
+            swapReferrer: referrer,
+            data: abi.encode(SwapCallbackData({tokenIn: params.tokenIn, tokenOut: params.tokenOut, fee: params.fee, payer: msg.sender}))
+        })
     );
     
     // ... rest of function logic ...
@@ -176,16 +180,18 @@ function exactOutputSingle(ExactOutputSingleParams calldata params)
         PoolAddress.getPoolKey(params.tokenIn, params.tokenOut, params.fee)
     );
     
-    // Perform swap with referrer
+    // Perform swap with referrer using SwapParams struct
     (int256 amount0, int256 amount1) = IUniswapV3Pool(pool).swap(
-        params.recipient,
-        zeroForOne,
-        -params.amountOut.toInt256(),
-        params.sqrtPriceLimitX96 == 0
-            ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
-            : params.sqrtPriceLimitX96,
-        referrer,  // Pass referrer address
-        abi.encode(SwapCallbackData({tokenIn: params.tokenIn, tokenOut: params.tokenOut, fee: params.fee, payer: msg.sender}))
+        IUniswapV3PoolActions.SwapParams({
+            recipient: params.recipient,
+            zeroForOne: zeroForOne,
+            amountSpecified: -params.amountOut.toInt256(),
+            sqrtPriceLimitX96: params.sqrtPriceLimitX96 == 0
+                ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                : params.sqrtPriceLimitX96,
+            swapReferrer: referrer,
+            data: abi.encode(SwapCallbackData({tokenIn: params.tokenIn, tokenOut: params.tokenOut, fee: params.fee, payer: msg.sender}))
+        })
     );
     
     // ... rest of function logic ...
@@ -207,14 +213,16 @@ function exactInput(ExactInputParams memory params)
     while (true) {
         // ... path parsing logic ...
         
-        // Perform swap with referrer
+        // Perform swap with referrer using SwapParams struct
         (int256 amount0, int256 amount1) = IUniswapV3Pool(pool).swap(
-            recipient,
-            zeroForOne,
-            amountIn.toInt256(),
-            sqrtPriceLimitX96,
-            referrer,  // Pass referrer address
-            abi.encode(SwapCallbackData({tokenIn: tokenIn, tokenOut: tokenOut, fee: fee, payer: payer}))
+            IUniswapV3PoolActions.SwapParams({
+                recipient: recipient,
+                zeroForOne: zeroForOne,
+                amountSpecified: amountIn.toInt256(),
+                sqrtPriceLimitX96: sqrtPriceLimitX96,
+                swapReferrer: referrer,
+                data: abi.encode(SwapCallbackData({tokenIn: tokenIn, tokenOut: tokenOut, fee: fee, payer: payer}))
+            })
         );
         
         // ... rest of loop logic ...
@@ -237,14 +245,16 @@ function exactOutput(ExactOutputParams calldata params)
     while (true) {
         // ... path parsing logic ...
         
-        // Perform swap with referrer
+        // Perform swap with referrer using SwapParams struct
         (int256 amount0, int256 amount1) = IUniswapV3Pool(pool).swap(
-            recipient,
-            zeroForOne,
-            -amountOut.toInt256(),
-            sqrtPriceLimitX96,
-            referrer,  // Pass referrer address
-            abi.encode(SwapCallbackData({tokenIn: tokenIn, tokenOut: tokenOut, fee: fee, payer: payer}))
+            IUniswapV3PoolActions.SwapParams({
+                recipient: recipient,
+                zeroForOne: zeroForOne,
+                amountSpecified: -amountOut.toInt256(),
+                sqrtPriceLimitX96: sqrtPriceLimitX96,
+                swapReferrer: referrer,
+                data: abi.encode(SwapCallbackData({tokenIn: tokenIn, tokenOut: tokenOut, fee: fee, payer: payer}))
+            })
         );
         
         // ... rest of loop logic ...
@@ -279,8 +289,8 @@ Since the SwapRouter contract is typically deployed as an immutable contract, ad
 3. **Factory Integration**: Update factory to point to new router (if applicable)
 
 #### Backwards Compatibility
-- New referrer parameter in pool swap calls breaks compatibility with existing pools
-- Requires coordinated upgrade of both pool and router contracts
+- New SwapParams struct in pool swap calls breaks compatibility with existing pools
+- Requires coordinated upgrade of both pool and router contracts  
 - Consider deploying new router alongside existing one during transition period
 
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.7.6;
+pragma abicoder v2;
 
 import './interfaces/IUniswapV3Pool.sol';
 
@@ -67,6 +68,8 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         // the current protocol fee as a percentage of the swap fee taken on withdrawal
         // represented as an integer denominator (1/x)%
         uint8 feeProtocol;
+        // swap referrer fee (1/x)%
+        uint8 feeSwapReferrer;
         // whether the pool is locked
         bool unlocked;
     }
@@ -282,6 +285,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             observationCardinality: cardinality,
             observationCardinalityNext: cardinalityNext,
             feeProtocol: 0,
+            feeSwapReferrer: 0,
             unlocked: true
         });
 
@@ -545,6 +549,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     struct SwapCache {
         // the protocol fee for the input token
         uint8 feeProtocol;
+        uint8 feeSwapReferrer;
         // liquidity at the beginning of the swap
         uint128 liquidityStart;
         // the timestamp of the current block
@@ -571,6 +576,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         uint256 feeGrowthGlobalX128;
         // amount of input token paid as protocol fee
         uint128 protocolFee;
+        uint128 swapReferrerFee;
         // the current liquidity in range
         uint128 liquidity;
     }
@@ -593,22 +599,21 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @inheritdoc IUniswapV3PoolActions
-    function swap(
-        address recipient,
-        bool zeroForOne,
-        int256 amountSpecified,
-        uint160 sqrtPriceLimitX96,
-        bytes calldata data
-    ) external override noDelegateCall returns (int256 amount0, int256 amount1) {
-        require(amountSpecified != 0, 'AS');
+    function swap(IUniswapV3PoolActions.SwapParams calldata params) 
+        external override noDelegateCall returns (int256 amount0, int256 amount1) {
+        require(params.amountSpecified != 0, 'AS');
+        
+        // Check router whitelist for swap referrer
+        bool isRouterWhitelisted = params.swapReferrer != address(0) && 
+            IUniswapV3Factory(factory).isRouterWhitelisted(msg.sender);
 
         Slot0 memory slot0Start = slot0;
 
         require(slot0Start.unlocked, 'LOK');
         require(
-            zeroForOne
-                ? sqrtPriceLimitX96 < slot0Start.sqrtPriceX96 && sqrtPriceLimitX96 > TickMath.MIN_SQRT_RATIO
-                : sqrtPriceLimitX96 > slot0Start.sqrtPriceX96 && sqrtPriceLimitX96 < TickMath.MAX_SQRT_RATIO,
+            params.zeroForOne
+                ? params.sqrtPriceLimitX96 < slot0Start.sqrtPriceX96 && params.sqrtPriceLimitX96 > TickMath.MIN_SQRT_RATIO
+                : params.sqrtPriceLimitX96 > slot0Start.sqrtPriceX96 && params.sqrtPriceLimitX96 < TickMath.MAX_SQRT_RATIO,
             'SPL'
         );
 
@@ -618,27 +623,29 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             SwapCache({
                 liquidityStart: liquidity,
                 blockTimestamp: _blockTimestamp(),
-                feeProtocol: zeroForOne ? (slot0Start.feeProtocol % 16) : (slot0Start.feeProtocol >> 4),
+                feeProtocol: params.zeroForOne ? (slot0Start.feeProtocol % 16) : (slot0Start.feeProtocol >> 4),
+                feeSwapReferrer: params.zeroForOne ? (slot0Start.feeSwapReferrer % 16) : (slot0Start.feeSwapReferrer >> 4),
                 secondsPerLiquidityCumulativeX128: 0,
                 tickCumulative: 0,
                 computedLatestObservation: false
             });
 
-        bool exactInput = amountSpecified > 0;
+        bool exactInput = params.amountSpecified > 0;
 
         SwapState memory state =
             SwapState({
-                amountSpecifiedRemaining: amountSpecified,
+                amountSpecifiedRemaining: params.amountSpecified,
                 amountCalculated: 0,
                 sqrtPriceX96: slot0Start.sqrtPriceX96,
                 tick: slot0Start.tick,
-                feeGrowthGlobalX128: zeroForOne ? feeGrowthGlobal0X128 : feeGrowthGlobal1X128,
+                feeGrowthGlobalX128: params.zeroForOne ? feeGrowthGlobal0X128 : feeGrowthGlobal1X128,
                 protocolFee: 0,
+                swapReferrerFee: 0,
                 liquidity: cache.liquidityStart
             });
 
-        // continue swapping as long as we haven't used the entire input/output and haven't reached the price limit
-        while (state.amountSpecifiedRemaining != 0 && state.sqrtPriceX96 != sqrtPriceLimitX96) {
+        // Execute swap loop
+        while (state.amountSpecifiedRemaining != 0 && state.sqrtPriceX96 != params.sqrtPriceLimitX96) {
             StepComputations memory step;
 
             step.sqrtPriceStartX96 = state.sqrtPriceX96;
@@ -646,30 +653,29 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             (step.tickNext, step.initialized) = tickBitmap.nextInitializedTickWithinOneWord(
                 state.tick,
                 tickSpacing,
-                zeroForOne
+                params.zeroForOne
             );
 
-            // ensure that we do not overshoot the min/max tick, as the tick bitmap is not aware of these bounds
+            // ensure that we do not overshoot the min/max tick
             if (step.tickNext < TickMath.MIN_TICK) {
                 step.tickNext = TickMath.MIN_TICK;
             } else if (step.tickNext > TickMath.MAX_TICK) {
                 step.tickNext = TickMath.MAX_TICK;
             }
 
-            // get the price for the next tick
             step.sqrtPriceNextX96 = TickMath.getSqrtRatioAtTick(step.tickNext);
 
-            // compute values to swap to the target tick, price limit, or point where input/output amount is exhausted
             (state.sqrtPriceX96, step.amountIn, step.amountOut, step.feeAmount) = SwapMath.computeSwapStep(
                 state.sqrtPriceX96,
-                (zeroForOne ? step.sqrtPriceNextX96 < sqrtPriceLimitX96 : step.sqrtPriceNextX96 > sqrtPriceLimitX96)
-                    ? sqrtPriceLimitX96
+                (params.zeroForOne ? step.sqrtPriceNextX96 < params.sqrtPriceLimitX96 : step.sqrtPriceNextX96 > params.sqrtPriceLimitX96)
+                    ? params.sqrtPriceLimitX96
                     : step.sqrtPriceNextX96,
                 state.liquidity,
                 state.amountSpecifiedRemaining,
                 fee
             );
 
+            // Update amounts based on swap direction
             if (exactInput) {
                 state.amountSpecifiedRemaining -= (step.amountIn + step.feeAmount).toInt256();
                 state.amountCalculated = state.amountCalculated.sub(step.amountOut.toInt256());
@@ -678,11 +684,20 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
                 state.amountCalculated = state.amountCalculated.add((step.amountIn + step.feeAmount).toInt256());
             }
 
-            // if the protocol fee is on, calculate how much is owed, decrement feeAmount, and increment protocolFee
+            // Extract protocol and swap referrer fees
             if (cache.feeProtocol > 0) {
                 uint256 delta = step.feeAmount / cache.feeProtocol;
                 step.feeAmount -= delta;
                 state.protocolFee += uint128(delta);
+            }
+            if (cache.feeSwapReferrer > 0) {
+                uint256 refDelta = step.feeAmount / cache.feeSwapReferrer;
+                step.feeAmount -= refDelta;
+                if (isRouterWhitelisted) {
+                    state.swapReferrerFee += uint128(refDelta);
+                } else {
+                    state.protocolFee += uint128(refDelta);
+                }
             }
 
             // update global fee tracker
@@ -691,10 +706,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
 
             // shift tick if we reached the next price
             if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {
-                // if the tick is initialized, run the tick transition
                 if (step.initialized) {
-                    // check for the placeholder value, which we replace with the actual value the first time the swap
-                    // crosses an initialized tick
                     if (!cache.computedLatestObservation) {
                         (cache.tickCumulative, cache.secondsPerLiquidityCumulativeX128) = observations.observeSingle(
                             cache.blockTimestamp,
@@ -709,22 +721,17 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
                     int128 liquidityNet =
                         ticks.cross(
                             step.tickNext,
-                            (zeroForOne ? state.feeGrowthGlobalX128 : feeGrowthGlobal0X128),
-                            (zeroForOne ? feeGrowthGlobal1X128 : state.feeGrowthGlobalX128),
+                            (params.zeroForOne ? state.feeGrowthGlobalX128 : feeGrowthGlobal0X128),
+                            (params.zeroForOne ? feeGrowthGlobal1X128 : state.feeGrowthGlobalX128),
                             cache.secondsPerLiquidityCumulativeX128,
                             cache.tickCumulative,
                             cache.blockTimestamp
                         );
-                    // if we're moving leftward, we interpret liquidityNet as the opposite sign
-                    // safe because liquidityNet cannot be type(int128).min
-                    if (zeroForOne) liquidityNet = -liquidityNet;
-
+                    if (params.zeroForOne) liquidityNet = -liquidityNet;
                     state.liquidity = LiquidityMath.addDelta(state.liquidity, liquidityNet);
                 }
-
-                state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext;
+                state.tick = params.zeroForOne ? step.tickNext - 1 : step.tickNext;
             } else if (state.sqrtPriceX96 != step.sqrtPriceStartX96) {
-                // recompute unless we're on a lower tick boundary (i.e. already transitioned ticks), and haven't moved
                 state.tick = TickMath.getTickAtSqrtRatio(state.sqrtPriceX96);
             }
         }
@@ -756,34 +763,43 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
 
         // update fee growth global and, if necessary, protocol fees
         // overflow is acceptable, protocol has to withdraw before it hits type(uint128).max fees
-        if (zeroForOne) {
+        if (params.zeroForOne) {
             feeGrowthGlobal0X128 = state.feeGrowthGlobalX128;
             if (state.protocolFee > 0) protocolFees.token0 += state.protocolFee;
         } else {
             feeGrowthGlobal1X128 = state.feeGrowthGlobalX128;
             if (state.protocolFee > 0) protocolFees.token1 += state.protocolFee;
         }
+        
+        // Transfer swap referrer fees if applicable
+        if (state.swapReferrerFee > 0 && isRouterWhitelisted) {
+            TransferHelper.safeTransfer(
+                params.zeroForOne ? token0 : token1, 
+                params.swapReferrer, 
+                state.swapReferrerFee
+            );
+        }
 
-        (amount0, amount1) = zeroForOne == exactInput
-            ? (amountSpecified - state.amountSpecifiedRemaining, state.amountCalculated)
-            : (state.amountCalculated, amountSpecified - state.amountSpecifiedRemaining);
+        (amount0, amount1) = params.zeroForOne == exactInput
+            ? (params.amountSpecified - state.amountSpecifiedRemaining, state.amountCalculated)
+            : (state.amountCalculated, params.amountSpecified - state.amountSpecifiedRemaining);
 
         // do the transfers and collect payment
-        if (zeroForOne) {
-            if (amount1 < 0) TransferHelper.safeTransfer(token1, recipient, uint256(-amount1));
+        if (params.zeroForOne) {
+            if (amount1 < 0) TransferHelper.safeTransfer(token1, params.recipient, uint256(-amount1));
 
             uint256 balance0Before = balance0();
-            IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+            IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, params.data);
             require(balance0Before.add(uint256(amount0)) <= balance0(), 'IIA');
         } else {
-            if (amount0 < 0) TransferHelper.safeTransfer(token0, recipient, uint256(-amount0));
+            if (amount0 < 0) TransferHelper.safeTransfer(token0, params.recipient, uint256(-amount0));
 
             uint256 balance1Before = balance1();
-            IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+            IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, params.data);
             require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
         }
 
-        emit Swap(msg.sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
+        emit Swap(msg.sender, params.recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
         slot0.unlocked = true;
     }
 
@@ -865,5 +881,16 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         }
 
         emit CollectProtocol(msg.sender, recipient, amount0, amount1);
+    }
+
+    /// @inheritdoc IUniswapV3PoolOwnerActions
+    function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external override lock onlyFactoryOwner {
+        require(
+            (feeSwapReferrer0 == 0 || (feeSwapReferrer0 >= 4 && feeSwapReferrer0 <= 20)) &&
+                (feeSwapReferrer1 == 0 || (feeSwapReferrer1 >= 4 && feeSwapReferrer1 <= 20))
+        );
+        uint8 feeSwapReferrerOld = slot0.feeSwapReferrer;
+        slot0.feeSwapReferrer = feeSwapReferrer0 + (feeSwapReferrer1 << 4);
+        emit SetFeeSwapReferrer(feeSwapReferrerOld % 16, feeSwapReferrerOld >> 4, feeSwapReferrer0, feeSwapReferrer1);
     }
 }

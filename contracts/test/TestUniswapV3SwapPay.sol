@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
+pragma abicoder v2;
 
 import '../interfaces/IERC20Minimal.sol';
 
 import '../interfaces/callback/IUniswapV3SwapCallback.sol';
 import '../interfaces/IUniswapV3Pool.sol';
+import '../interfaces/pool/IUniswapV3PoolActions.sol';
 
 contract TestUniswapV3SwapPay is IUniswapV3SwapCallback {
     function swap(
@@ -16,13 +18,14 @@ contract TestUniswapV3SwapPay is IUniswapV3SwapCallback {
         uint256 pay0,
         uint256 pay1
     ) external {
-        IUniswapV3Pool(pool).swap(
-            recipient,
-            zeroForOne,
-            amountSpecified,
-            sqrtPriceX96,
-            abi.encode(msg.sender, pay0, pay1)
-        );
+        IUniswapV3Pool(pool).swap(IUniswapV3PoolActions.SwapParams({
+            recipient: recipient,
+            zeroForOne: zeroForOne,
+            amountSpecified: amountSpecified,
+            sqrtPriceLimitX96: sqrtPriceX96,
+            swapReferrer: address(0),
+            data: abi.encode(msg.sender, pay0, pay1)
+        }));
     }
 
     function uniswapV3SwapCallback(

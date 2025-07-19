@@ -325,6 +325,20 @@ The pool contract must implement:
 function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external;
 ```
 
+**Note**: The pool's swap function must also be updated to use SwapParams struct:
+```solidity
+struct SwapParams {
+    address recipient;
+    bool zeroForOne;
+    int256 amountSpecified;
+    uint160 sqrtPriceLimitX96;
+    address swapReferrer;
+    bytes data;
+}
+
+function swap(SwapParams calldata params) external returns (int256 amount0, int256 amount1);
+```
+
 ### Factory-Pool Communication
 - Factory calls pool's `setFeeSwapReferrer()` during configuration
 - Pool validates that caller is factory
