@@ -119,4 +119,10 @@ interface IUniswapV3PoolActions {
     /// the input observationCardinalityNext.
     /// @param observationCardinalityNext The desired minimum number of observations for the pool to store
     function increaseObservationCardinalityNext(uint16 observationCardinalityNext) external;
+
+    /// @notice Collect all accumulated swap referrer fees for the caller
+    /// @dev Only the referrer themselves can collect their own fees
+    /// @return amount0 The amount of token0 fees collected
+    /// @return amount1 The amount of token1 fees collected
+    function collectMyReferrerFees() external returns (uint128 amount0, uint128 amount1);
 }

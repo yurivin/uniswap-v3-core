@@ -45,20 +45,15 @@ struct Slot0 {
 }
 ```
 
-#### Add Swap Referrer Fee Storage (similar to protocolFees)
+#### Add Swap Referrer Fee Storage (per-referrer mapping)
 ```solidity
 struct SwapReferrerFees {
     uint128 token0;
     uint128 token1;
 }
 
-SwapReferrerFees public override swapReferrerFees;
-```
-
-#### Add Referrer Address Mapping
-```solidity
-// Maps router address to their designated referrer address
-mapping(address => address) public routerReferrers;
+// Maps referrer address to their accumulated fees
+mapping(address => SwapReferrerFees) public override referrerFees;
 ```
 
 ### 2. Interface Updates
@@ -66,8 +61,6 @@ mapping(address => address) public routerReferrers;
 #### Add to IUniswapV3PoolOwnerActions.sol
 ```solidity
 function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external;
-function collectSwapReferrerFees(address recipient, uint128 amount0Requested, uint128 amount1Requested) 
-    external returns (uint128 amount0, uint128 amount1);
 ```
 
 #### Add to IUniswapV3PoolActions.sol
@@ -82,11 +75,14 @@ struct SwapArguments {
 }
 
 function swapWithReferrer(SwapArguments calldata args) external returns (int256 amount0, int256 amount1);
+
+/// @notice Collect all accumulated swap referrer fees for the caller
+function collectMyReferrerFees() external returns (uint128 amount0, uint128 amount1);
 ```
 
 #### Add to IUniswapV3PoolState.sol
 ```solidity
-function swapReferrerFees() external view returns (uint128 token0, uint128 token1);
+function referrerFees(address referrer) external view returns (uint128 token0, uint128 token1);
 ```
 
 ### 3. Core Implementation Changes
@@ -155,42 +151,35 @@ function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) exte
 }
 ```
 
-#### collectSwapReferrerFees function (similar to collectProtocol)
+#### collectMyReferrerFees function (referrer-controlled collection)
 ```solidity
-function collectSwapReferrerFees(
-    address recipient,
-    uint128 amount0Requested,
-    uint128 amount1Requested
-) external override lock onlyFactoryOwner returns (uint128 amount0, uint128 amount1) {
-    amount0 = amount0Requested > swapReferrerFees.token0 ? swapReferrerFees.token0 : amount0Requested;
-    amount1 = amount1Requested > swapReferrerFees.token1 ? swapReferrerFees.token1 : amount1Requested;
-
+function collectMyReferrerFees() external override lock returns (uint128 amount0, uint128 amount1) {
+    SwapReferrerFees storage fees = referrerFees[msg.sender];
+    amount0 = fees.token0;
+    amount1 = fees.token1;
+    
     if (amount0 > 0) {
-        if (amount0 == swapReferrerFees.token0) amount0--; // ensure that the slot is not cleared, for gas savings
-        swapReferrerFees.token0 -= amount0;
-        TransferHelper.safeTransfer(token0, recipient, amount0);
+        fees.token0 = 0; // Clear the accumulated fees
+        TransferHelper.safeTransfer(token0, msg.sender, amount0);
     }
     if (amount1 > 0) {
-        if (amount1 == swapReferrerFees.token1) amount1--; // ensure that the slot is not cleared, for gas savings
-        swapReferrerFees.token1 -= amount1;
-        TransferHelper.safeTransfer(token1, recipient, amount1);
+        fees.token1 = 0; // Clear the accumulated fees
+        TransferHelper.safeTransfer(token1, msg.sender, amount1);
     }
-
-    emit CollectSwapReferrerFees(msg.sender, recipient, amount0, amount1);
+    
+    emit CollectReferrerFees(msg.sender, amount0, amount1);
 }
 ```
 
 #### Fee accumulation logic in swap function
 ```solidity
-// Add after swap loop completes (around line 757-765)
-// Accumulate swap referrer fees in storage
-if (state.swapReferrerFee > 0) {
+// Add after swap loop completes (around line 1002-1009)
+// Accumulate swap referrer fees for later collection by referrer
+if (state.swapReferrerFee > 0 && isRouterWhitelisted && args.swapReferrer != address(0)) {
     if (args.zeroForOne) {
-        swapReferrerFees.token0 += state.swapReferrerFee;
-        emit SwapReferrerFeeAccumulated(args.swapReferrer, state.swapReferrerFee, 0);
+        referrerFees[args.swapReferrer].token0 += state.swapReferrerFee;
     } else {
-        swapReferrerFees.token1 += state.swapReferrerFee;
-        emit SwapReferrerFeeAccumulated(args.swapReferrer, 0, state.swapReferrerFee);
+        referrerFees[args.swapReferrer].token1 += state.swapReferrerFee;
     }
 }
 ```
@@ -200,8 +189,7 @@ if (state.swapReferrerFee > 0) {
 #### Add to interface
 ```solidity
 event SetFeeSwapReferrer(uint8 feeSwapReferrer0Old, uint8 feeSwapReferrer1Old, uint8 feeSwapReferrer0New, uint8 feeSwapReferrer1New);
-event CollectSwapReferrerFees(address indexed sender, address indexed recipient, uint128 amount0, uint128 amount1);
-event SwapReferrerFeeAccumulated(address indexed referrer, uint128 amount0, uint128 amount1);
+event CollectReferrerFees(address indexed referrer, uint128 amount0, uint128 amount1);
 ```
 
 ### 6. Flash Loan Integration (Optional)
@@ -239,15 +227,15 @@ if (paid0 > 0) {
 2. ✅ Update `SwapState` and `SwapCache` structs
 3. ✅ Add `SwapReferrerFees` storage struct
 
-### Phase 3: Core Logic Implementation 🚧 (In Progress - Need to Switch Patterns)
+### Phase 3: Core Logic Implementation ✅ (Complete)
 1. ✅ Implement `swapWithReferrer()` function with Arguments struct
 2. ✅ Update fee calculation logic in swap loop
-3. ❌ **Need to Replace**: Remove direct transfer logic, add accumulation logic
+3. ✅ **Pattern Switched**: Removed direct transfer, added accumulation logic
 4. ✅ Router whitelist validation with factory integration
 
-### Phase 4: Management Functions 🚧 (Partial - Need Collection Function)
+### Phase 4: Management Functions ✅ (Complete)
 1. ✅ Implement `setFeeSwapReferrer()` function
-2. ❌ **Need to Add**: `collectSwapReferrerFees()` function
+2. ✅ Implement `collectMyReferrerFees()` function (referrer-controlled)
 3. ✅ Add necessary events
 
 ### Phase 5: Testing and Validation 🚧 (In Progress)
@@ -263,7 +251,7 @@ if (paid0 > 0) {
 
 1. **Access Control**: 
    - Only factory owner can set referrer fee rates
-   - Only factory owner can collect accumulated referrer fees
+   - Only referrers themselves can collect their own accumulated fees
    - Router whitelist validation prevents unauthorized referrer claims
 2. **Fee Bounds**: Referrer fees limited to 4-15 range (matching protocol fee bounds)
 3. **Address Validation**: Validate referrer addresses to prevent zero address issues

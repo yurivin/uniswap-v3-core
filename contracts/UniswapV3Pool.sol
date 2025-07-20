@@ -90,6 +90,14 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     /// @inheritdoc IUniswapV3PoolState
     ProtocolFees public override protocolFees;
 
+    // accumulated swap referrer fees in token0/token1 units
+    struct SwapReferrerFees {
+        uint128 token0;
+        uint128 token1;
+    }
+    /// @notice The accumulated swap referrer fees for each referrer address
+    mapping(address => SwapReferrerFees) public override referrerFees;
+
     /// @inheritdoc IUniswapV3PoolState
     uint128 public override liquidity;
 
@@ -991,14 +999,12 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             if (state.protocolFee > 0) protocolFees.token1 += state.protocolFee;
         }
 
-        // Transfer swap referrer fees directly to referrer if applicable
+        // Accumulate swap referrer fees for later collection by referrer
         if (state.swapReferrerFee > 0 && isRouterWhitelisted && args.swapReferrer != address(0)) {
             if (args.zeroForOne) {
-                TransferHelper.safeTransfer(token0, args.swapReferrer, state.swapReferrerFee);
-                emit SwapReferrerFeeTransfer(args.swapReferrer, state.swapReferrerFee, 0);
+                referrerFees[args.swapReferrer].token0 += state.swapReferrerFee;
             } else {
-                TransferHelper.safeTransfer(token1, args.swapReferrer, state.swapReferrerFee);
-                emit SwapReferrerFeeTransfer(args.swapReferrer, 0, state.swapReferrerFee);
+                referrerFees[args.swapReferrer].token1 += state.swapReferrerFee;
             }
         }
 
@@ -1115,5 +1121,23 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         }
 
         emit CollectProtocol(msg.sender, recipient, amount0, amount1);
+    }
+
+    /// @inheritdoc IUniswapV3PoolActions
+    function collectMyReferrerFees() external override lock returns (uint128 amount0, uint128 amount1) {
+        SwapReferrerFees storage fees = referrerFees[msg.sender];
+        amount0 = fees.token0;
+        amount1 = fees.token1;
+        
+        if (amount0 > 0) {
+            fees.token0 = 0; // Clear the accumulated fees
+            TransferHelper.safeTransfer(token0, msg.sender, amount0);
+        }
+        if (amount1 > 0) {
+            fees.token1 = 0; // Clear the accumulated fees
+            TransferHelper.safeTransfer(token1, msg.sender, amount1);
+        }
+        
+        emit CollectReferrerFees(msg.sender, amount0, amount1);
     }
 }

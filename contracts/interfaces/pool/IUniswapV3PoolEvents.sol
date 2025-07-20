@@ -126,9 +126,9 @@ interface IUniswapV3PoolEvents {
     /// @param feeSwapReferrer1New The updated value of the token1 swap referrer fee
     event SetFeeSwapReferrer(uint8 feeSwapReferrer0Old, uint8 feeSwapReferrer1Old, uint8 feeSwapReferrer0New, uint8 feeSwapReferrer1New);
 
-    /// @notice Emitted when swap referrer fees are transferred to the referrer
-    /// @param referrer The address that receives the swap referrer fees
-    /// @param amount0 The amount of token0 swap referrer fees transferred
-    /// @param amount1 The amount of token1 swap referrer fees transferred
-    event SwapReferrerFeeTransfer(address indexed referrer, uint128 amount0, uint128 amount1);
+    /// @notice Emitted when swap referrer fees are collected by the referrer
+    /// @param referrer The address that collected their swap referrer fees
+    /// @param amount0 The amount of token0 swap referrer fees collected
+    /// @param amount1 The amount of token1 swap referrer fees collected
+    event CollectReferrerFees(address indexed referrer, uint128 amount0, uint128 amount1);
 }
