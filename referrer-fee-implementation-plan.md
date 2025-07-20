@@ -1,7 +1,12 @@
 # Referrer Fee Implementation Plan for UniswapV3Pool
 
 ## Overview
-This document outlines the implementation plan for adding a referrer fee system to the UniswapV3Pool contract. The referrer fee will be extracted from swap fees, similar to how protocol fees are currently handled.
+This document outlines the implementation plan for adding a referrer fee system to the UniswapV3Pool contract. The referrer fee will be extracted from swap fees and **accumulated in pool storage for later collection**, following the proven protocol fee pattern.
+
+## ⚠️ Implementation Pattern Decision
+**Based on Phase 3 experiments**, we've determined that the **accumulate-then-collect pattern** is the correct approach:
+- ❌ **Direct Transfer Pattern**: Fails due to execution order (transfer before callback)
+- ✅ **Accumulate-Collect Pattern**: Proven protocol fee pattern, safer execution order
 
 ## Current Fee Structure Analysis
 
@@ -35,35 +40,49 @@ struct Slot0 {
     uint16 observationCardinality;
     uint16 observationCardinalityNext;
     uint8 feeProtocol;
-    uint8 feeReferrer;  // NEW: referrer fee percentage (1/x format) - set by factory owner
+    uint8 feeSwapReferrer;  // NEW: referrer fee percentage (4-bit per token) - set by factory owner
     bool unlocked;
 }
 ```
 
-#### No additional storage needed
+#### Add Swap Referrer Fee Storage (per-referrer mapping)
 ```solidity
-// Referrer address comes from Router as swap parameter
-// Fee percentage stored in Slot0, configured by factory owner
+struct SwapReferrerFees {
+    uint128 token0;
+    uint128 token1;
+}
+
+// Maps referrer address to their accumulated fees
+mapping(address => SwapReferrerFees) public override referrerFees;
 ```
 
 ### 2. Interface Updates
 
 #### Add to IUniswapV3PoolOwnerActions.sol
 ```solidity
-function setFeeReferrer(uint8 feeReferrer0, uint8 feeReferrer1) external;
+function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external;
 ```
 
 #### Add to IUniswapV3PoolActions.sol
 ```solidity
-// Modify existing swap function signature to include referrer
-function swap(
-    address recipient,
-    bool zeroForOne,
-    int256 amountSpecified,
-    uint160 sqrtPriceLimitX96,
-    bytes calldata data,
-    address referrer  // NEW: referrer address
-) external returns (int256 amount0, int256 amount1);
+struct SwapArguments {
+    address recipient;
+    bool zeroForOne;
+    int256 amountSpecified;
+    uint160 sqrtPriceLimitX96;
+    address swapReferrer;
+    bytes data;
+}
+
+function swapWithReferrer(SwapArguments calldata args) external returns (int256 amount0, int256 amount1);
+
+/// @notice Collect all accumulated swap referrer fees for the caller
+function collectMyReferrerFees() external returns (uint128 amount0, uint128 amount1);
+```
+
+#### Add to IUniswapV3PoolState.sol
+```solidity
+function referrerFees(address referrer) external view returns (uint128 token0, uint128 token1);
 ```
 
 ### 3. Core Implementation Changes
@@ -77,7 +96,7 @@ struct SwapState {
     int24 tick;
     uint256 feeGrowthGlobalX128;
     uint128 protocolFee;
-    uint128 referrerFee;  // NEW: referrer fee for direct transfer
+    uint128 swapReferrerFee;  // NEW: referrer fee for accumulation
     uint128 liquidity;
 }
 ```
@@ -86,7 +105,7 @@ struct SwapState {
 ```solidity
 struct SwapCache {
     uint8 feeProtocol;
-    uint8 feeReferrer;  // NEW: referrer fee percentage (from Slot0)
+    uint8 feeSwapReferrer;  // NEW: referrer fee percentage (from Slot0)
     uint128 liquidityStart;
     uint32 blockTimestamp;
     int56 tickCumulative;
@@ -104,11 +123,11 @@ if (cache.feeProtocol > 0) {
     state.protocolFee += uint128(protocolDelta);
 }
 
-// Extract referrer fee from remaining amount
-if (cache.feeReferrer > 0) {
-    uint256 referrerDelta = step.feeAmount / cache.feeReferrer;
-    step.feeAmount -= referrerDelta;
-    state.referrerFee += uint128(referrerDelta);
+// Extract swap referrer fee from remaining amount (only if router whitelisted and referrer provided)
+if (cache.feeSwapReferrer > 0 && isRouterWhitelisted && args.swapReferrer != address(0)) {
+    uint256 swapReferrerDelta = step.feeAmount / cache.feeSwapReferrer;
+    step.feeAmount -= swapReferrerDelta;
+    state.swapReferrerFee += uint128(swapReferrerDelta);
 }
 
 // Remaining fee goes to liquidity providers
@@ -118,29 +137,50 @@ if (state.liquidity > 0)
 
 ### 4. New Functions Implementation
 
-#### setFeeReferrer function
+#### setFeeSwapReferrer function
 ```solidity
-function setFeeReferrer(uint8 feeReferrer0, uint8 feeReferrer1) external override lock onlyFactoryOwner {
+function setFeeSwapReferrer(uint8 feeSwapReferrer0, uint8 feeSwapReferrer1) external override lock onlyFactoryOwner {
     require(
-        (feeReferrer0 == 0 || (feeReferrer0 >= 4 && feeReferrer0 <= 20)) &&
-            (feeReferrer1 == 0 || (feeReferrer1 >= 4 && feeReferrer1 <= 20))
+        (feeSwapReferrer0 == 0 || (feeSwapReferrer0 >= 4 && feeSwapReferrer0 <= 15)) &&
+            (feeSwapReferrer1 == 0 || (feeSwapReferrer1 >= 4 && feeSwapReferrer1 <= 15)),
+        'SWAP_REFERRER: Invalid fee values'
     );
-    uint8 feeReferrerOld = slot0.feeReferrer;
-    slot0.feeReferrer = feeReferrer0 + (feeReferrer1 << 4);
-    emit SetFeeReferrer(feeReferrerOld % 16, feeReferrerOld >> 4, feeReferrer0, feeReferrer1);
+    uint8 feeSwapReferrerOld = slot0.feeSwapReferrer;
+    slot0.feeSwapReferrer = feeSwapReferrer0 + (feeSwapReferrer1 << 4);
+    emit SetFeeSwapReferrer(feeSwapReferrerOld % 16, feeSwapReferrerOld >> 4, feeSwapReferrer0, feeSwapReferrer1);
 }
 ```
 
-#### Direct transfer logic in swap function
+#### collectMyReferrerFees function (referrer-controlled collection)
 ```solidity
-// Add after fee growth global update (around line 757-765)
-if (state.referrerFee > 0 && referrer != address(0)) {
-    if (zeroForOne) {
-        TransferHelper.safeTransfer(token0, referrer, state.referrerFee);
-    } else {
-        TransferHelper.safeTransfer(token1, referrer, state.referrerFee);
+function collectMyReferrerFees() external override lock returns (uint128 amount0, uint128 amount1) {
+    SwapReferrerFees storage fees = referrerFees[msg.sender];
+    amount0 = fees.token0;
+    amount1 = fees.token1;
+    
+    if (amount0 > 0) {
+        fees.token0 = 0; // Clear the accumulated fees
+        TransferHelper.safeTransfer(token0, msg.sender, amount0);
     }
-    emit ReferrerFeeTransfer(referrer, zeroForOne ? state.referrerFee : 0, zeroForOne ? 0 : state.referrerFee);
+    if (amount1 > 0) {
+        fees.token1 = 0; // Clear the accumulated fees
+        TransferHelper.safeTransfer(token1, msg.sender, amount1);
+    }
+    
+    emit CollectReferrerFees(msg.sender, amount0, amount1);
+}
+```
+
+#### Fee accumulation logic in swap function
+```solidity
+// Add after swap loop completes (around line 1002-1009)
+// Accumulate swap referrer fees for later collection by referrer
+if (state.swapReferrerFee > 0 && isRouterWhitelisted && args.swapReferrer != address(0)) {
+    if (args.zeroForOne) {
+        referrerFees[args.swapReferrer].token0 += state.swapReferrerFee;
+    } else {
+        referrerFees[args.swapReferrer].token1 += state.swapReferrerFee;
+    }
 }
 ```
 
@@ -148,71 +188,77 @@ if (state.referrerFee > 0 && referrer != address(0)) {
 
 #### Add to interface
 ```solidity
-event SetFeeReferrer(uint8 feeReferrer0Old, uint8 feeReferrer1Old, uint8 feeReferrer0New, uint8 feeReferrer1New);
-event ReferrerFeeTransfer(address indexed referrer, uint128 amount0, uint128 amount1);
+event SetFeeSwapReferrer(uint8 feeSwapReferrer0Old, uint8 feeSwapReferrer1Old, uint8 feeSwapReferrer0New, uint8 feeSwapReferrer1New);
+event CollectReferrerFees(address indexed referrer, uint128 amount0, uint128 amount1);
 ```
 
-### 6. Flash Loan Integration
+### 6. Flash Loan Integration (Optional)
 
 #### Update flash function (lines 800-831)
 Apply similar referrer fee extraction logic to flash loan fees:
 ```solidity
 if (paid0 > 0) {
     uint8 feeProtocol0 = slot0.feeProtocol % 16;
-    uint8 feeReferrer0 = slot0.feeReferrer % 16;
+    uint8 feeSwapReferrer0 = slot0.feeSwapReferrer % 16;
     
     uint256 protocolFees0 = feeProtocol0 == 0 ? 0 : paid0 / feeProtocol0;
-    uint256 referrerFees0 = feeReferrer0 == 0 ? 0 : (paid0 - protocolFees0) / feeReferrer0;
+    uint256 swapReferrerFees0 = feeSwapReferrer0 == 0 ? 0 : (paid0 - protocolFees0) / feeSwapReferrer0;
     
     if (uint128(protocolFees0) > 0) protocolFees.token0 += uint128(protocolFees0);
-    if (uint128(referrerFees0) > 0 && referrer != address(0)) {
-        TransferHelper.safeTransfer(token0, referrer, uint128(referrerFees0));
+    if (uint128(swapReferrerFees0) > 0) {
+        swapReferrerFees.token0 += uint128(swapReferrerFees0);
     }
     
-    feeGrowthGlobal0X128 += FullMath.mulDiv(paid0 - protocolFees0 - referrerFees0, FixedPoint128.Q128, _liquidity);
+    feeGrowthGlobal0X128 += FullMath.mulDiv(paid0 - protocolFees0 - swapReferrerFees0, FixedPoint128.Q128, _liquidity);
 }
 ```
 
+**Note**: Flash loan referrer fees may not be necessary for initial implementation.
+
 ## Implementation Steps
 
-### Phase 1: Interface Updates
-1. Update `IUniswapV3PoolActions.sol` interface (add referrer parameter to swap)
-2. Update `IUniswapV3PoolOwnerActions.sol` interface (add setFeeReferrer)
+### Phase 1: Interface Updates ✅ (Complete)
+1. ✅ Update `IUniswapV3PoolActions.sol` interface (add SwapArguments struct and swapWithReferrer)
+2. ✅ Update `IUniswapV3PoolOwnerActions.sol` interface (add setFeeSwapReferrer and collectSwapReferrerFees)
+3. ✅ Update `IUniswapV3PoolState.sol` interface (add swapReferrerFees view function)
 
-### Phase 2: Storage and Struct Changes
-1. Modify `Slot0` struct to include `feeReferrer`
-2. Update `SwapState` and `SwapCache` structs
+### Phase 2: Storage and Struct Changes ✅ (Complete)
+1. ✅ Modify `Slot0` struct to include `feeSwapReferrer`
+2. ✅ Update `SwapState` and `SwapCache` structs
+3. ✅ Add `SwapReferrerFees` storage struct
 
-### Phase 3: Core Logic Implementation
-1. Modify `swap()` function signature to include referrer parameter
-2. Update fee calculation logic in swap loop
-3. Add direct transfer logic after fee calculation
+### Phase 3: Core Logic Implementation ✅ (Complete)
+1. ✅ Implement `swapWithReferrer()` function with Arguments struct
+2. ✅ Update fee calculation logic in swap loop
+3. ✅ **Pattern Switched**: Removed direct transfer, added accumulation logic
+4. ✅ Router whitelist validation with factory integration
 
-### Phase 4: Management Functions
-1. Implement `setFeeReferrer()` function
-2. Add necessary events
+### Phase 4: Management Functions ✅ (Complete)
+1. ✅ Implement `setFeeSwapReferrer()` function
+2. ✅ Implement `collectMyReferrerFees()` function (referrer-controlled)
+3. ✅ Add necessary events
 
-### Phase 5: Flash Loan Integration
-1. Update `flash()` function to support referrer fees
-2. Add referrer parameter to flash loan interface
+### Phase 5: Testing and Validation 🚧 (In Progress)
+1. ✅ Comprehensive unit tests framework established
+2. ✅ Basic functionality tests (4/9 passing)
+3. ❌ **Need to Update**: Tests for accumulate-collect pattern
+4. ✅ Test edge cases and backwards compatibility
 
-### Phase 6: Testing and Validation
-1. Write comprehensive unit tests
-2. Test gas optimization scenarios
-3. Validate fee calculation accuracy
-4. Test edge cases (zero referrer, failed transfers)
+### Phase 6: Flash Loan Integration (Optional)
+1. Flash loan referrer fees (future consideration)
 
 ## Security Considerations
 
 1. **Access Control**: 
    - Only factory owner can set referrer fee rates
-   - Direct transfer eliminates collection access control issues
-2. **Fee Bounds**: Referrer fees should be limited (suggested: 4-20, meaning 1/4 to 1/20 of swap fee)
-3. **Address Validation**: Validate referrer addresses to prevent zero address transfers
+   - Only referrers themselves can collect their own accumulated fees
+   - Router whitelist validation prevents unauthorized referrer claims
+2. **Fee Bounds**: Referrer fees limited to 4-15 range (matching protocol fee bounds)
+3. **Address Validation**: Validate referrer addresses to prevent zero address issues
 4. **Overflow Protection**: Ensure fee calculations don't cause arithmetic overflow
-5. **Gas Optimization**: Direct transfer is more gas efficient than accumulate-then-collect pattern
+5. **Accumulation Safety**: Proven accumulate-then-collect pattern reduces execution risks
 6. **Transfer Safety**: Use TransferHelper.safeTransfer for all token transfers
-7. **Referrer Validation**: Must check referrer != address(0) before transfer
+7. **Router Authorization**: Only whitelisted routers can trigger referrer fee accumulation
 
 ## Gas Impact Analysis
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity >=0.5.0;
+pragma abicoder v2;
 
 /// @title Permissionless pool actions
 /// @notice Contains pool methods that can be called by anyone
@@ -80,6 +81,24 @@ interface IUniswapV3PoolActions {
         bytes calldata data
     ) external returns (int256 amount0, int256 amount1);
 
+    /// @notice Arguments for swap with referrer to avoid stack too deep errors
+    struct SwapArguments {
+        address recipient;
+        bool zeroForOne;
+        int256 amountSpecified;
+        uint160 sqrtPriceLimitX96;
+        address swapReferrer;
+        bytes data;
+    }
+
+    /// @notice Swap token0 for token1, or token1 for token0 with swap referrer fee support
+    /// @dev The caller of this method receives a callback in the form of IUniswapV3SwapCallback#uniswapV3SwapCallback
+    /// @dev Swap referrer fees are only processed if the caller is a whitelisted router
+    /// @param args The swap arguments struct containing all parameters
+    /// @return amount0 The delta of the balance of token0 of the pool, exact when negative, minimum when positive
+    /// @return amount1 The delta of the balance of token1 of the pool, exact when negative, minimum when positive
+    function swapWithReferrer(SwapArguments calldata args) external returns (int256 amount0, int256 amount1);
+
     /// @notice Receive token0 and/or token1 and pay it back, plus a fee, in the callback
     /// @dev The caller of this method receives a callback in the form of IUniswapV3FlashCallback#uniswapV3FlashCallback
     /// @dev Can be used to donate underlying tokens pro-rata to currently in-range liquidity providers by calling
@@ -100,4 +119,10 @@ interface IUniswapV3PoolActions {
     /// the input observationCardinalityNext.
     /// @param observationCardinalityNext The desired minimum number of observations for the pool to store
     function increaseObservationCardinalityNext(uint16 observationCardinalityNext) external;
+
+    /// @notice Collect all accumulated swap referrer fees for the caller
+    /// @dev Only the referrer themselves can collect their own fees
+    /// @return amount0 The amount of token0 fees collected
+    /// @return amount1 The amount of token1 fees collected
+    function collectMyReferrerFees() external returns (uint128 amount0, uint128 amount1);
 }

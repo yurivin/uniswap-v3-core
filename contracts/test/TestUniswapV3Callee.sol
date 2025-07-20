@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
+pragma abicoder v2;
 
 import '../interfaces/IERC20Minimal.sol';
 
@@ -65,6 +66,13 @@ contract TestUniswapV3Callee is IUniswapV3MintCallback, IUniswapV3SwapCallback, 
         address recipient
     ) external {
         IUniswapV3Pool(pool).swap(recipient, false, type(int256).max, sqrtPriceX96, abi.encode(msg.sender));
+    }
+
+    function swapWithReferrer(
+        address pool,
+        IUniswapV3PoolActions.SwapArguments calldata args
+    ) external returns (int256 amount0, int256 amount1) {
+        return IUniswapV3Pool(pool).swapWithReferrer(args);
     }
 
     event SwapCallback(int256 amount0Delta, int256 amount1Delta);
