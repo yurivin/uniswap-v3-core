@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
+pragma abicoder v2;
 
 import '../libraries/SafeCast.sol';
 import '../libraries/TickMath.sol';
@@ -87,5 +88,12 @@ contract TestUniswapV3Router is IUniswapV3SwapCallback {
                 );
             }
         }
+    }
+
+    function swapWithReferrer(
+        address pool,
+        IUniswapV3PoolActions.SwapArguments calldata args
+    ) external returns (int256 amount0, int256 amount1) {
+        return IUniswapV3Pool(pool).swapWithReferrer(args);
     }
 }

@@ -28,6 +28,7 @@ interface IUniswapV3PoolState {
             uint16 observationCardinality,
             uint16 observationCardinalityNext,
             uint8 feeProtocol,
+            uint8 feeSwapReferrer,
             bool unlocked
         );
 
